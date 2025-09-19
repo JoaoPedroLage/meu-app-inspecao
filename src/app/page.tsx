@@ -1,103 +1,431 @@
-import Image from "next/image";
+import { useState, useRef, ChangeEvent, FormEvent } from 'react';
+import { FileUp, PlusCircle, Trash2, ChevronLeft, ChevronRight, CheckCircle, XCircle } from 'lucide-react';
+import Image from 'next/image';
 
-export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+// Mock de imagem do logo - substitua pela URL do seu logo
+const LOGO_URL = 'https://i.imgur.com/g22yZu2.png';
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+// TypeScript interfaces
+interface InputFieldProps {
+    label: string;
+    type?: string;
+    value: string;
+    onChange: (e: ChangeEvent<HTMLInputElement>) => void;
+    placeholder: string;
+    name: string;
+    required?: boolean;
 }
+
+interface TextareaFieldProps {
+    label: string;
+    value: string;
+    onChange: (e: ChangeEvent<HTMLTextAreaElement>) => void;
+    placeholder: string;
+    name: string;
+    required?: boolean;
+}
+
+interface SignaturePadProps {
+    title: string;
+    signatureRef: React.RefObject<HTMLDivElement | null>;
+    onClear: () => void;
+}
+
+interface HeaderData {
+    departamento: string;
+    encarregado: string;
+    responsavelQSMS: string;
+    gerenteContrato: string;
+    unidade: string;
+    data: string;
+    hora: string;
+    local: string;
+}
+
+interface Participant {
+    nome: string;
+    funcao: string;
+}
+
+interface InspectionItem {
+    item: number;
+    fato: string;
+    recomendacoes: string;
+    prazo: string;
+    responsavel: string;
+    conclusao: string;
+    foto: File | null;
+}
+
+interface ConclusionData {
+    conclusaoGeral: string;
+}
+
+type SubmissionStatus = 'success' | 'error' | null;
+
+// Componente para um campo de formulário padrão
+const InputField = ({ label, type = 'text', value, onChange, placeholder, name, required = true }: InputFieldProps) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
+        <input
+            type={type}
+            id={name}
+            name={name}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            required={required}
+            className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-shadow duration-300"
+        />
+    </div>
+);
+
+// Componente para área de texto
+const TextareaField = ({ label, value, onChange, placeholder, name, required = true }: TextareaFieldProps) => (
+     <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
+        <textarea
+            id={name}
+            name={name}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            required={required}
+            rows={4}
+            className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-shadow duration-300"
+        />
+    </div>
+);
+
+// Componente para a assinatura digital
+const SignaturePad = ({ title, signatureRef, onClear }: SignaturePadProps) => (
+    <div className="w-full">
+        <label className="block text-sm font-medium text-gray-300 mb-2">{title}</label>
+        <div className="bg-white border border-gray-400 rounded-lg">
+            {/* Em uma implementação real, usaríamos uma biblioteca como 'react-signature-canvas' aqui */}
+            <div ref={signatureRef} className="h-32 cursor-crosshair" title="Espaço para assinatura. Em uma app real, isso seria um canvas interativo.">
+                 <p className="text-center text-gray-400 p-4">Área de Assinatura</p>
+            </div>
+        </div>
+        <button type="button" onClick={onClear} className="text-sm text-amber-500 hover:text-amber-400 mt-2">Limpar</button>
+    </div>
+);
+
+
+export default function InspectionForm() {
+    const [step, setStep] = useState(1);
+    const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatus>(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const [headerData, setHeaderData] = useState<HeaderData>({
+        departamento: '',
+        encarregado: '',
+        responsavelQSMS: '',
+        gerenteContrato: '',
+        unidade: '',
+        data: '',
+        hora: '',
+        local: '',
+    });
+
+    const [participants, setParticipants] = useState<Participant[]>([{ nome: '', funcao: '' }]);
+    const [inspectionItems, setInspectionItems] = useState<InspectionItem[]>([
+        { item: 1, fato: '', recomendacoes: '', prazo: '', responsavel: '', conclusao: '', foto: null }
+    ]);
+    
+    const [conclusionData, setConclusionData] = useState<ConclusionData>({
+        conclusaoGeral: '',
+    });
+    
+    const signature1Ref = useRef<HTMLDivElement | null>(null);
+    const signature2Ref = useRef<HTMLDivElement | null>(null);
+
+    const handleHeaderChange = (e: ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setHeaderData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleParticipantChange = (index: number, e: ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        const newParticipants = [...participants];
+        newParticipants[index] = { ...newParticipants[index], [name]: value };
+        setParticipants(newParticipants);
+    };
+
+    const addParticipant = () => {
+        setParticipants([...participants, { nome: '', funcao: '' }]);
+    };
+
+    const removeParticipant = (index: number) => {
+        const newParticipants = participants.filter((_, i) => i !== index);
+        setParticipants(newParticipants);
+    };
+    
+    const handleItemChange = (index: number, e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const { name, value } = e.target;
+        const files = (e.target as HTMLInputElement).files;
+        const newItems = [...inspectionItems];
+        if (name === 'foto') {
+            newItems[index] = { ...newItems[index], [name]: files?.[0] || null };
+        } else {
+            newItems[index] = { ...newItems[index], [name]: value };
+        }
+        setInspectionItems(newItems);
+    };
+
+    const addItem = () => {
+        setInspectionItems([...inspectionItems, { item: inspectionItems.length + 1, fato: '', recomendacoes: '', prazo: '', responsavel: '', conclusao: '', foto: null }]);
+    };
+
+    const removeItem = (index: number) => {
+        const newItems = inspectionItems.filter((_, i) => i !== index).map((item, idx) => ({ ...item, item: idx + 1 }));
+        setInspectionItems(newItems);
+    };
+    
+    const handleConclusionChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+        setConclusionData({ ...conclusionData, [e.target.name]: e.target.value });
+    };
+
+    const clearSignature = (ref: React.RefObject<HTMLDivElement | null>) => {
+        // Em uma app real com canvas: ref.current.clear();
+        console.log("Assinatura limpa para:", ref);
+    };
+
+    const nextStep = () => setStep(s => Math.min(s + 1, 3));
+    const prevStep = () => setStep(s => Math.max(s - 1, 1));
+
+    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setSubmissionStatus(null);
+        
+        // Simulação de coleta de dados de assinatura
+        const signature1 = "data:image/png;base64,mocked_signature_1";
+        const signature2 = "data:image/png;base64,mocked_signature_2";
+
+        const formData = {
+            headerData,
+            participants,
+            inspectionItems: inspectionItems.map(item => ({...item, foto: item.foto ? item.foto.name : 'Nenhuma'})),
+            conclusionData,
+            signatures: {
+                responsavelInspecao: signature1,
+                responsavelUnidade: signature2,
+            }
+        };
+
+        console.log("Dados a serem enviados:", formData);
+
+        try {
+            // A URL deve apontar para a sua API route do Next.js
+            const response = await fetch('/api/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData),
+            });
+
+            if (response.ok) {
+                setSubmissionStatus('success');
+                // Opcional: resetar o formulário
+                // setStep(1);
+                // ...resetar todos os estados
+            } else {
+                throw new Error('Falha no envio');
+            }
+        } catch (error) {
+            console.error('Erro ao enviar formulário:', error);
+            setSubmissionStatus('error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    if (submissionStatus) {
+        return (
+            <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4 text-white">
+                {submissionStatus === 'success' ? (
+                    <>
+                        <CheckCircle className="text-green-500 w-24 h-24 mb-4" />
+                        <h2 className="text-3xl font-bold mb-2">Enviado com Sucesso!</h2>
+                        <p className="text-gray-400">Seu relatório de inspeção foi registrado.</p>
+                    </>
+                ) : (
+                    <>
+                        <XCircle className="text-red-500 w-24 h-24 mb-4" />
+                        <h2 className="text-3xl font-bold mb-2">Ocorreu um Erro</h2>
+                        <p className="text-gray-400">Não foi possível enviar seu relatório. Tente novamente mais tarde.</p>
+                    </>
+                )}
+                 <button onClick={() => setSubmissionStatus(null)} className="mt-8 bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105">
+                    Preencher Novo Formulário
+                </button>
+            </div>
+        )
+    }
+
+    return (
+        <div className="min-h-screen bg-gray-900 text-white font-sans">
+            <header className="bg-gray-800 p-4 shadow-lg flex items-center justify-between">
+                <Image src={LOGO_URL} alt="Logo da Empresa" width={40} height={40} className="h-10 w-auto" />
+                <h1 className="text-xl font-bold text-amber-500">Relatório de Inspeção</h1>
+            </header>
+            
+            <main className="p-4 md:p-8 max-w-4xl mx-auto">
+                {/* Stepper */}
+                <div className="mb-8">
+                    <div className="flex items-center justify-center">
+                        {[1, 2, 3].map((s) => (
+                            <div key={s} className="flex items-center">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all duration-300 ${step >= s ? 'bg-amber-500 text-white' : 'bg-gray-700 text-gray-400'}`}>
+                                    {s}
+                                </div>
+                                {s < 3 && <div className={`h-1 w-16 transition-all duration-300 ${step > s ? 'bg-amber-500' : 'bg-gray-700'}`}></div>}
+                            </div>
+                        ))}
+                    </div>
+                     <div className="text-center mt-2 text-gray-400 font-semibold">
+                        {step === 1 && "1. Cabeçalho da Inspeção"}
+                        {step === 2 && "2. Detalhes da Inspeção"}
+                        {step === 3 && "3. Conclusão e Assinaturas"}
+                    </div>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    {step === 1 && (
+                        <section className="space-y-6 animate-fade-in">
+                            <h2 className="text-2xl font-semibold text-amber-400 border-l-4 border-amber-400 pl-4">Cabeçalho da Inspeção</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <InputField label="Departamento" name="departamento" value={headerData.departamento} onChange={handleHeaderChange} placeholder="Ex: Manutenção de Frota" />
+                                <InputField label="Encarregado" name="encarregado" value={headerData.encarregado} onChange={handleHeaderChange} placeholder="Nome do encarregado" />
+                                <InputField label="Responsável QSMS" name="responsavelQSMS" value={headerData.responsavelQSMS} onChange={handleHeaderChange} placeholder="Nome do responsável" />
+                                <InputField label="Gerente de Contrato" name="gerenteContrato" value={headerData.gerenteContrato} onChange={handleHeaderChange} placeholder="Nome do gerente" />
+                                <InputField label="Unidade" name="unidade" value={headerData.unidade} onChange={handleHeaderChange} placeholder="Ex: Mina do Sossego" />
+                                <InputField label="Data" name="data" type="date" value={headerData.data} onChange={handleHeaderChange} placeholder="" />
+                                <InputField label="Hora" name="hora" type="time" value={headerData.hora} onChange={handleHeaderChange} placeholder="" />
+                                <InputField label="Local da Inspeção" name="local" value={headerData.local} onChange={handleHeaderChange} placeholder="Ex: Frente de lavra 3" />
+                            </div>
+
+                            <div className="pt-4">
+                                <h3 className="text-xl font-semibold text-amber-400 border-l-4 border-amber-400 pl-4 mb-4">Participantes</h3>
+                                {participants.map((p, index) => (
+                                    <div key={index} className="flex items-center gap-4 mb-4 p-4 bg-gray-800 rounded-lg">
+                                        <div className="flex-grow grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <InputField label="Nome do Participante" name="nome" value={p.nome} onChange={(e) => handleParticipantChange(index, e)} placeholder="Nome completo" />
+                                            <InputField label="Função" name="funcao" value={p.funcao} onChange={(e) => handleParticipantChange(index, e)} placeholder="Ex: Mecânico" />
+                                        </div>
+                                        <button type="button" onClick={() => removeParticipant(index)} className="p-2 text-red-500 hover:text-red-400">
+                                            <Trash2 size={20} />
+                                        </button>
+                                    </div>
+                                ))}
+                                <button type="button" onClick={addParticipant} className="flex items-center gap-2 text-amber-500 hover:text-amber-400 font-semibold py-2 px-4 rounded-lg border-2 border-dashed border-gray-600 hover:border-amber-500 transition">
+                                    <PlusCircle size={20} /> Adicionar Participante
+                                </button>
+                            </div>
+                        </section>
+                    )}
+
+                    {step === 2 && (
+                         <section className="space-y-6 animate-fade-in">
+                            <h2 className="text-2xl font-semibold text-amber-400 border-l-4 border-amber-400 pl-4">Detalhes da Inspeção</h2>
+                             {inspectionItems.map((item, index) => (
+                                <div key={index} className="bg-gray-800 p-4 rounded-lg space-y-4 relative">
+                                    <span className="absolute top-4 right-4 bg-amber-500 text-white text-sm font-bold w-8 h-8 rounded-full flex items-center justify-center">{item.item}</span>
+                                    <TextareaField label="Fato Observado" name="fato" value={item.fato} onChange={(e) => handleItemChange(index, e)} placeholder="Descrever irregularidade ou regularidade..." />
+                                    
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">Evidência Fotográfica</label>
+                                        <label htmlFor={`foto-${index}`} className="w-full flex items-center justify-center gap-2 bg-gray-700 border-2 border-dashed border-gray-600 text-gray-400 rounded-lg p-3 cursor-pointer hover:bg-gray-600 hover:border-amber-500 hover:text-white transition">
+                                            <FileUp size={20} />
+                                            <span>{item.foto ? item.foto.name : "Anexar foto"}</span>
+                                        </label>
+                                        <input id={`foto-${index}`} name="foto" type="file" accept="image/*" onChange={(e) => handleItemChange(index, e)} className="hidden" />
+                                    </div>
+
+                                    <TextareaField label="Recomendações para Correção" name="recomendacoes" value={item.recomendacoes} onChange={(e) => handleItemChange(index, e)} placeholder="Descrever sugestões de correção..." />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <InputField label="Prazo de Execução" name="prazo" type="date" value={item.prazo} onChange={(e) => handleItemChange(index, e)} placeholder="" />
+                                        <InputField label="Responsável" name="responsavel" value={item.responsavel} onChange={(e) => handleItemChange(index, e)} placeholder="Nome do responsável pela correção"/>
+                                    </div>
+                                    <TextareaField label="Conclusão da Ação" name="conclusao" value={item.conclusao} onChange={(e) => handleItemChange(index, e)} placeholder="Descrever a conclusão após a correção." />
+                                    
+                                    {inspectionItems.length > 1 && (
+                                        <button type="button" onClick={() => removeItem(index)} className="w-full mt-2 flex items-center justify-center gap-2 text-red-500 hover:text-red-400 font-semibold py-2 rounded-lg border-2 border-dashed border-red-800 hover:border-red-500 transition">
+                                            <Trash2 size={18} /> Remover Item
+                                        </button>
+                                    )}
+                                </div>
+                             ))}
+                             <button type="button" onClick={addItem} className="w-full flex items-center justify-center gap-2 text-amber-500 hover:text-amber-400 font-semibold py-3 px-4 rounded-lg border-2 border-dashed border-gray-600 hover:border-amber-500 transition">
+                                <PlusCircle size={20} /> Adicionar Novo Item
+                            </button>
+                        </section>
+                    )}
+
+                    {step === 3 && (
+                         <section className="space-y-8 animate-fade-in">
+                            <h2 className="text-2xl font-semibold text-amber-400 border-l-4 border-amber-400 pl-4">Conclusão Geral</h2>
+                            <TextareaField label="Parecer Técnico da Inspeção" name="conclusaoGeral" value={conclusionData.conclusaoGeral} onChange={handleConclusionChange} placeholder="Descreva as condições ambientais, de trabalho, e se o local/equipamento está apto." />
+                            
+                            <div className="space-y-8 md:space-y-0 md:flex md:gap-8">
+                                <SignaturePad title="Assinatura do Responsável pela Inspeção" signatureRef={signature1Ref} onClear={() => clearSignature(signature1Ref)} />
+                                <SignaturePad title="Assinatura do Responsável da Unidade" signatureRef={signature2Ref} onClear={() => clearSignature(signature2Ref)} />
+                            </div>
+                        </section>
+                    )}
+                </form>
+
+                {/* Navigation */}
+                <div className="mt-10 pt-6 border-t border-gray-700 flex justify-between items-center">
+                    <button
+                        type="button"
+                        onClick={prevStep}
+                        disabled={step === 1}
+                        className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                    >
+                        <ChevronLeft size={20} />
+                        Anterior
+                    </button>
+
+                    {step < 3 ? (
+                        <button
+                            type="button"
+                            onClick={nextStep}
+                            className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105"
+                        >
+                            Próximo
+                            <ChevronRight size={20} />
+                        </button>
+                    ) : (
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105 flex items-center justify-center disabled:opacity-60 disabled:transform-none"
+                        >
+                            {isLoading ? (
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            ) : (
+                                "Enviar Relatório"
+                            )}
+                        </button>
+                    )}
+                </div>
+            </main>
+        </div>
+    );
+}
+
+// Para animação de fade-in
+// Adicione isso ao seu arquivo CSS global ou em uma tag <style> no cabeçalho do HTML
+/*
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+}
+*/
