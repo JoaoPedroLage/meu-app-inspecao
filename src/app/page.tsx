@@ -1,9 +1,11 @@
-import { useState, useRef, ChangeEvent, FormEvent } from 'react';
+"use client";
+
+import { useState, useRef, ChangeEvent, FormEvent, useEffect } from 'react';
 import { FileUp, PlusCircle, Trash2, ChevronLeft, ChevronRight, CheckCircle, XCircle } from 'lucide-react';
 import Image from 'next/image';
 
 // Mock de imagem do logo - substitua pela URL do seu logo
-const LOGO_URL = 'https://i.imgur.com/g22yZu2.png';
+const LOGO_URL = '/logo.png';
 
 // TypeScript interfaces
 interface InputFieldProps {
@@ -116,6 +118,7 @@ export default function InspectionForm() {
     const [step, setStep] = useState(1);
     const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatus>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [mounted, setMounted] = useState(false);
 
     const [headerData, setHeaderData] = useState<HeaderData>({
         departamento: '',
@@ -139,6 +142,10 @@ export default function InspectionForm() {
     
     const signature1Ref = useRef<HTMLDivElement | null>(null);
     const signature2Ref = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     const handleHeaderChange = (e: ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -240,6 +247,10 @@ export default function InspectionForm() {
         }
     };
     
+    if (!mounted) {
+        return null; // Prevent hydration mismatch
+    }
+
     if (submissionStatus) {
         return (
             <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4 text-white">
@@ -266,7 +277,9 @@ export default function InspectionForm() {
     return (
         <div className="min-h-screen bg-gray-900 text-white font-sans">
             <header className="bg-gray-800 p-4 shadow-lg flex items-center justify-between">
-                <Image src={LOGO_URL} alt="Logo da Empresa" width={40} height={40} className="h-10 w-auto" />
+                <div className="bg-white p-2 rounded">
+                    <Image src={LOGO_URL} alt="Logo da Empresa" width={40} height={40} className="h-10 w-auto" />
+                </div>
                 <h1 className="text-xl font-bold text-amber-500">Relatório de Inspeção</h1>
             </header>
             
@@ -417,15 +430,3 @@ export default function InspectionForm() {
         </div>
     );
 }
-
-// Para animação de fade-in
-// Adicione isso ao seu arquivo CSS global ou em uma tag <style> no cabeçalho do HTML
-/*
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-in {
-    animation: fadeIn 0.5s ease-out forwards;
-}
-*/
