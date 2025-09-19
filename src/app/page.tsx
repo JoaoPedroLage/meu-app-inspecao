@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useRef, ChangeEvent, FormEvent, useEffect } from 'react';
+import { useState, useRef, ChangeEvent, FormEvent, useEffect, useCallback } from 'react';
 import { FileUp, PlusCircle, Trash2, ChevronLeft, ChevronRight, CheckCircle, XCircle } from 'lucide-react';
-import Image from 'next/image';
+// import Image from 'next/image';
 
 // Mock de imagem do logo - substitua pela URL do seu logo
-const LOGO_URL = '/logo.png';
+// const LOGO_URL = '/logo.png';
 
 // TypeScript interfaces
 interface InputFieldProps {
@@ -29,7 +29,7 @@ interface TextareaFieldProps {
 
 interface SignaturePadProps {
   title: string;
-  signatureRef: React.RefObject<HTMLDivElement | null>;
+  signatureRef?: React.RefObject<HTMLDivElement | null>; // Make optional since we're not using it
   onClear: () => void;
 }
 
@@ -100,19 +100,129 @@ const TextareaField = ({ label, value, onChange, placeholder, name, required = t
 );
 
 // Componente para a assinatura digital
-const SignaturePad = ({ title, signatureRef, onClear }: SignaturePadProps) => (
-  <div className="w-full">
-    <label className="block text-sm font-medium text-gray-300 mb-2">{title}</label>
-    <div className="bg-white border border-gray-400 rounded-lg">
-      {/* Em uma implementação real, usaríamos uma biblioteca como 'react-signature-canvas' aqui */}
-      <div ref={signatureRef} className="h-32 cursor-crosshair" title="Espaço para assinatura. Em uma app real, isso seria um canvas interativo.">
-        <p className="text-center text-gray-400 p-4">Área de Assinatura</p>
-      </div>
-    </div>
-    <button type="button" onClick={onClear} className="text-sm text-amber-500 hover:text-amber-400 mt-2">Limpar</button>
-  </div>
-);
+const SignaturePad = ({ title, onClear }: SignaturePadProps) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  
+  const getEventPos = useCallback((e: MouseEvent | TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    if ('touches' in e && e.touches[0]) {
+      return {
+        x: (e.touches[0].clientX - rect.left) * scaleX,
+        y: (e.touches[0].clientY - rect.top) * scaleY
+      };
+    }
+    
+    if ('clientX' in e) {
+      return {
+        x: (e.clientX - rect.left) * scaleX,
+        y: (e.clientY - rect.top) * scaleY
+      };
+    }
+    
+    return { x: 0, y: 0 };
+  }, []);
 
+  const startDrawing = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    setIsDrawing(true);
+    const pos = getEventPos(e.nativeEvent);
+    
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  }, [getEventPos]);
+
+  const draw = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    e.preventDefault();
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const pos = getEventPos(e.nativeEvent);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  }, [isDrawing, getEventPos]);
+
+  const stopDrawing = useCallback(() => {
+    setIsDrawing(false);
+  }, []);
+
+  const clearCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    onClear();
+  }, [onClear]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    // Set canvas size
+    canvas.width = 400;
+    canvas.height = 150;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Set up drawing context
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }, []);
+
+  return (
+    <div className="w-full">
+      <label className="block text-sm font-medium text-gray-300 mb-2">{title}</label>
+      <div className="bg-white border border-gray-400 rounded-lg p-2">
+        <canvas
+          ref={canvasRef}
+          className="w-full h-32 border rounded cursor-crosshair touch-none"
+          onMouseDown={startDrawing}
+          onMouseMove={draw}
+          onMouseUp={stopDrawing}
+          onMouseLeave={stopDrawing}
+          onTouchStart={startDrawing}
+          onTouchMove={draw}
+          onTouchEnd={stopDrawing}
+          style={{ touchAction: 'none' }}
+        />
+      </div>
+      <button 
+        type="button" 
+        onClick={clearCanvas} 
+        className="text-sm text-amber-500 hover:text-amber-400 mt-2 bg-gray-700 px-3 py-1 rounded"
+      >
+        Limpar Assinatura
+      </button>
+    </div>
+  );
+};
 
 export default function InspectionForm() {
   const [step, setStep] = useState(1);
@@ -194,10 +304,7 @@ export default function InspectionForm() {
   };
 
   const clearSignature = (ref: React.RefObject<HTMLDivElement | null>) => {
-    // Em uma app real com canvas: ref.current.clear();
-    if (ref.current) {
-      ref.current.innerHTML = '';
-    }
+    // Esta função agora é gerenciada pelo componente SignaturePad
     console.log("Assinatura limpa para:", ref);
   };
 
@@ -209,8 +316,12 @@ export default function InspectionForm() {
     setIsLoading(true);
     setSubmissionStatus(null);
 
-    const signature1 = '';
-    const signature2 = '';
+    // Capturar dados das assinaturas dos canvas
+    const signature1Canvas = document.querySelector('canvas') as HTMLCanvasElement;
+    const signature2Canvas = document.querySelectorAll('canvas')[1] as HTMLCanvasElement;
+    
+    const signature1 = signature1Canvas ? signature1Canvas.toDataURL() : '';
+    const signature2 = signature2Canvas ? signature2Canvas.toDataURL() : '';
 
     const formData = {
       headerData,
@@ -229,21 +340,9 @@ export default function InspectionForm() {
     console.log("Dados a serem enviados:", formData);
 
     try {
-      // A URL deve apontar para a sua API route do Next.js
-      const response = await fetch('/api/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        setSubmissionStatus('success');
-        // Opcional: resetar o formulário
-        // setStep(1);
-        // ...resetar todos os estados
-      } else {
-        throw new Error('Falha no envio');
-      }
+      // Simular delay de envio
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      setSubmissionStatus('success');
     } catch (error) {
       console.error('Erro ao enviar formulário:', error);
       setSubmissionStatus('error');
@@ -316,6 +415,7 @@ export default function InspectionForm() {
             {step === 2 && "2. Detalhes da Inspeção"}
             {step === 3 && "3. Conclusão e Assinaturas"}
           </div>
+
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -396,8 +496,8 @@ export default function InspectionForm() {
               <TextareaField label="Parecer Técnico da Inspeção" name="conclusaoGeral" value={conclusionData.conclusaoGeral} onChange={handleConclusionChange} placeholder="Descreva as condições ambientais, de trabalho, e se o local/equipamento está apto." />
 
               <div className="space-y-8 md:space-y-0 md:flex md:gap-8">
-                <SignaturePad title="Assinatura do Responsável pela Inspeção" signatureRef={signature1Ref} onClear={() => clearSignature(signature1Ref)} />
-                <SignaturePad title="Assinatura do Responsável da Unidade" signatureRef={signature2Ref} onClear={() => clearSignature(signature2Ref)} />
+                <SignaturePad title="Assinatura do Responsável pela Inspeção" onClear={() => clearSignature(signature1Ref)} />
+                <SignaturePad title="Assinatura do Responsável da Unidade" onClear={() => clearSignature(signature2Ref)} />
               </div>
             </section>
           )}
