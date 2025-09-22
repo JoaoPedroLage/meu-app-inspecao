@@ -103,29 +103,29 @@ const TextareaField = ({ label, value, onChange, placeholder, name, required = t
 const SignaturePad = ({ title, onClear }: SignaturePadProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  
+
   const getEventPos = useCallback((e: MouseEvent | TouchEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
-    
+
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    
+
     if ('touches' in e && e.touches[0]) {
       return {
         x: (e.touches[0].clientX - rect.left) * scaleX,
         y: (e.touches[0].clientY - rect.top) * scaleY
       };
     }
-    
+
     if ('clientX' in e) {
       return {
         x: (e.clientX - rect.left) * scaleX,
         y: (e.clientY - rect.top) * scaleY
       };
     }
-    
+
     return { x: 0, y: 0 };
   }, []);
 
@@ -133,13 +133,13 @@ const SignaturePad = ({ title, onClear }: SignaturePadProps) => {
     e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
+
     setIsDrawing(true);
     const pos = getEventPos(e.nativeEvent);
-    
+
     ctx.beginPath();
     ctx.moveTo(pos.x, pos.y);
   }, [getEventPos]);
@@ -147,13 +147,13 @@ const SignaturePad = ({ title, onClear }: SignaturePadProps) => {
   const draw = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
     e.preventDefault();
-    
+
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
+
     const pos = getEventPos(e.nativeEvent);
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
@@ -166,10 +166,10 @@ const SignaturePad = ({ title, onClear }: SignaturePadProps) => {
   const clearCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -179,14 +179,14 @@ const SignaturePad = ({ title, onClear }: SignaturePadProps) => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     // Set canvas size
     canvas.width = 400;
     canvas.height = 150;
-    
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
+
     // Set up drawing context
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -213,9 +213,9 @@ const SignaturePad = ({ title, onClear }: SignaturePadProps) => {
           style={{ touchAction: 'none' }}
         />
       </div>
-      <button 
-        type="button" 
-        onClick={clearCanvas} 
+      <button
+        type="button"
+        onClick={clearCanvas}
         className="text-sm text-amber-500 hover:text-amber-400 mt-2 bg-gray-700 px-3 py-1 rounded"
       >
         Limpar Assinatura
@@ -312,16 +312,15 @@ export default function InspectionForm() {
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    console.log("Iniciando submissão do formulário...");
     e.preventDefault();
     setIsLoading(true);
     setSubmissionStatus(null);
 
     // Capturar dados das assinaturas dos canvas
-    const signature1Canvas = document.querySelector('canvas') as HTMLCanvasElement;
-    const signature2Canvas = document.querySelectorAll('canvas')[1] as HTMLCanvasElement;
-    
-    const signature1 = signature1Canvas ? signature1Canvas.toDataURL() : '';
-    const signature2 = signature2Canvas ? signature2Canvas.toDataURL() : '';
+    const canvases = document.querySelectorAll('canvas');
+    const signature1 = canvases[0] ? canvases[0].toDataURL() : '';
+    const signature2 = canvases[1] ? canvases[1].toDataURL() : '';
 
     const formData = {
       headerData,
@@ -333,16 +332,27 @@ export default function InspectionForm() {
       conclusionData,
       signatures: {
         responsavelInspecao: signature1,
-        responsavelUnidade: signature2
+        responsavelUnidade: signature2,
       }
     };
 
-    console.log("Dados a serem enviados:", formData);
+    console.log("Enviando os seguintes dados para /api/submit:", formData);
 
     try {
-      // Simular delay de envio
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setSubmissionStatus('success');
+      const response = await fetch('/api/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        console.log("Resposta da API:", result);
+        setSubmissionStatus('success');
+      } else {
+        throw new Error(result.message || 'Falha no envio do formulário.');
+      }
     } catch (error) {
       console.error('Erro ao enviar formulário:', error);
       setSubmissionStatus('error');
@@ -501,46 +511,48 @@ export default function InspectionForm() {
               </div>
             </section>
           )}
-        </form>
 
-        {/* Navigation */}
-        <div className="mt-10 pt-6 border-t border-gray-700 flex justify-between items-center">
-          <button
-            type="button"
-            onClick={prevStep}
-            disabled={step === 1}
-            className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-          >
-            <ChevronLeft size={20} />
-            Anterior
-          </button>
-
-          {step < 3 ? (
+          {/* Navigation */}
+          <div className="mt-10 pt-6 border-t border-gray-700 flex justify-between items-center">
             <button
               type="button"
-              onClick={nextStep}
-              className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105"
+              onClick={prevStep}
+              disabled={step === 1}
+              className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              Próximo
-              <ChevronRight size={20} />
+              <ChevronLeft size={20} />
+              Anterior
             </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105 flex items-center justify-center disabled:opacity-60 disabled:transform-none"
-            >
-              {isLoading ? (
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              ) : (
-                "Enviar Relatório"
-              )}
-            </button>
-          )}
-        </div>
+
+            {step < 3 ? (
+              <button
+                type="button"
+                onClick={nextStep}
+                className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105"
+              >
+                Próximo
+                <ChevronRight size={20} />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-transform transform hover:scale-105 flex items-center justify-center disabled:opacity-60 disabled:transform-none"
+              >
+                {isLoading ? (
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : (
+                  "Enviar Relatório"
+                )}
+              </button>
+            )}
+          </div>
+
+        </form>
+        
       </main>
     </div>
   );
