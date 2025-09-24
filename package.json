@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.17.1",
     "@types/react-signature-canvas": "^1.0.7",
     "googleapis": "^160.0.0",
     "lucide-react": "^0.544.0",
