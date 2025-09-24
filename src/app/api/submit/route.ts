@@ -99,32 +99,25 @@ async function uploadImageToCloudStorage(base64Data: string, fileName: string): 
 
       console.log(`📤 Fazendo upload para Cloud Storage: gs://${bucketName}/${fileName}`);
 
-      // AQUI ESTÁ A CORREÇÃO:
-      // Removemos a opção `public: true`. O arquivo herdará as permissões
-      // do bucket. Se o bucket for público, o arquivo será público.
       await file.save(buffer, {
           metadata: {
               contentType: mimeType,
               cacheControl: 'public, max-age=31536000',
           },
-          // A linha `public: true` foi removida.
       });
 
       console.log(`✅ Arquivo ${fileName} enviado com sucesso`);
 
-      // A URL pública padrão. Funciona se o bucket estiver configurado para acesso público.
       const publicUrl = `https://storage.googleapis.com/${bucketName}/${fileName}`;
       console.log(`🎉 Upload concluído: ${fileName} -> ${publicUrl}`);
       
       return { url: publicUrl, success: true };
 
   } catch (error) {
-      // Tratamento de erro aprimorado para extrair a mensagem corretamente
       let errorMessage = 'Erro desconhecido durante o upload.';
       if (error instanceof Error) {
           errorMessage = error.message;
       } else if (typeof error === 'object' && error !== null) {
-          // Tenta extrair a mensagem de objetos de erro complexos da API do Google
           const gcpError = error as { errors?: { message?: string }[]; message?: string };
           errorMessage = gcpError.errors?.[0]?.message || gcpError.message || JSON.stringify(error);
       }
@@ -145,25 +138,17 @@ function isSignatureBlank(base64Data: string): boolean {
   }
 
   try {
-    // Extrair apenas os dados da imagem (remover o prefixo data:image/png;base64,)
     const imageData = base64Data.substring(base64Data.indexOf(',') + 1);
     const buffer = Buffer.from(imageData, 'base64');
 
-    // Se a imagem é muito pequena, provavelmente está em branco
     if (buffer.length < 500) {
       return true;
     }
 
-    // Converter para string e procurar por padrões que indicam imagem em branco
     const bufferString = buffer.toString('hex');
-
-    // Uma imagem PNG em branco tem padrões específicos
-    // Verificar se contém apenas pixels brancos (ffffff) ou transparentes
     const whitePixelPattern = /ffffff/g;
     const whitePixelMatches = bufferString.match(whitePixelPattern);
     const totalLength = bufferString.length;
-
-    // Se mais de 95% da string contém padrões de pixels brancos, consideramos em branco
     const whiteRatio = whitePixelMatches ? (whitePixelMatches.length * 6) / totalLength : 0;
 
     console.log(`🔍 Análise da assinatura:`, {
@@ -176,7 +161,6 @@ function isSignatureBlank(base64Data: string): boolean {
 
   } catch (error) {
     console.error('Erro ao analisar assinatura:', error);
-    // Em caso de erro, consideramos que não está em branco
     return false;
   }
 }
@@ -336,15 +320,31 @@ export async function POST(request: NextRequest) {
         error: signature2Result.error || 'N/A'
       }
     });
+    
+    // Lógica para determinar o texto/link das assinaturas
+    // Esta lógica foi movida para fora do loop .map para funcionar corretamente
+    // tanto para casos com itens de inspeção quanto para casos sem itens.
+    let signatureLink1 = 'Não assinado';
+    if (!signature1IsBlank) {
+      if (signature1Result.success && signature1Result.url) {
+        signatureLink1 = `=HYPERLINK("${signature1Result.url}"; "Ver Assinatura")`;
+      } else {
+        signatureLink1 = `❌ Falha no upload: ${signature1Result.error || 'Erro desconhecido'}`;
+      }
+    }
+
+    let signatureLink2 = 'Não assinado';
+    if (!signature2IsBlank) {
+      if (signature2Result.success && signature2Result.url) {
+        signatureLink2 = `=HYPERLINK("${signature2Result.url}"; "Ver Assinatura")`;
+      } else {
+        signatureLink2 = `❌ Falha no upload: ${signature2Result.error || 'Erro desconhecido'}`;
+      }
+    }
 
     // Mapear os itens e fazer upload das evidências com tratamento de erros
     console.log(`📷 Processando ${inspectionItems.length} itens de inspeção...`);
 
-
-    // Determinar o texto para as assinaturas
-    let signatureLink1 = 'Não assinado';
-    let signatureLink2 = 'Não assinado';
-    
     const rowsToAppend = await Promise.all(
       inspectionItems.map(async (item, index) => {
         console.log(`📸 Processando item ${index + 1}:`, {
@@ -374,20 +374,6 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (!signature1IsBlank) {
-          if (signature1Result.success && signature1Result.url) {
-            signatureLink1 = `=HYPERLINK("${signature1Result.url}"; "Ver Assinatura")`;
-          } else {
-            signatureLink1 = `❌ Falha no upload: ${signature1Result.error || 'Erro desconhecido'}`;
-          }
-        }
-        if (!signature2IsBlank) {
-          if (signature2Result.success && signature2Result.url) {
-            signatureLink2 = `=HYPERLINK("${signature2Result.url}"; "Ver Assinatura")`;
-          } else {
-            signatureLink2 = `❌ Falha no upload: ${signature2Result.error || 'Erro desconhecido'}`;
-          }
-        }
         return [
           inspectionId,
           headerData.data || '',
@@ -405,11 +391,8 @@ export async function POST(request: NextRequest) {
           item.prazo || '',
           item.responsavel || '',
           item.conclusao || '',
-
           evidenceText,
-
           conclusionData.conclusaoGeral || '',
-
           signatureLink1,
           signatureLink2,
         ];
@@ -417,15 +400,16 @@ export async function POST(request: NextRequest) {
     );
 
     // Tratamento para formulários sem itens de inspeção
+    // Esta seção agora usa as variáveis de assinatura pré-calculadas corretamente
     if (rowsToAppend.length === 0) {
       rowsToAppend.push([
         inspectionId, headerData.data || '', headerData.hora || '', headerData.departamento || '',
         headerData.encarregado || '', headerData.responsavelQSMS || '', headerData.gerenteContrato || '',
         headerData.unidade || '', headerData.local || '', participantNames, participantFunctions,
-        'N/A', 'Nenhum item de inspeção foi adicionado.', '', '', '', '', 'Nenhuma',
+        'N/A', 'Nenhum item de inspeção foi adicionado.', '', '', '', 'Nenhuma',
         conclusionData.conclusaoGeral || '',
-        signatureLink1 ? `=HYPERLINK("${signatureLink1}", "Ver Assinatura")` : (signatures.responsavelInspecao ? 'Assinado Digitalmente' : ''),
-        signatureLink2 ? `=HYPERLINK("${signatureLink2}", "Ver Assinatura")` : (signatures.responsavelUnidade ? 'Assinado Digitalmente' : ''),
+        signatureLink1,
+        signatureLink2,
       ]);
     }
 
