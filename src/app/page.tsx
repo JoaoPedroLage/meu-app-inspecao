@@ -282,8 +282,30 @@ export default function InspectionForm() {
     const { name, value } = e.target;
     const files = (e.target as HTMLInputElement).files;
     const newItems = [...inspectionItems];
+    
     if (name === 'foto') {
-      newItems[index] = { ...newItems[index], [name]: files?.[0] || null };
+      const file = files?.[0] || null;
+      console.log(`📷 Foto selecionada para item ${index + 1}:`, {
+        fileName: file?.name || 'Nenhuma',
+        fileSize: file?.size || 0,
+        fileType: file?.type || 'N/A'
+      });
+      
+      // Converter para base64 para enviar na API
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const base64 = e.target?.result as string;
+          console.log(`📷 Arquivo convertido para base64:`, {
+            fileName: file.name,
+            base64Length: base64?.length || 0,
+            preview: base64?.substring(0, 50) + '...'
+          });
+        };
+        reader.readAsDataURL(file);
+      }
+      
+      newItems[index] = { ...newItems[index], [name]: file };
     } else {
       newItems[index] = { ...newItems[index], [name]: value };
     }
@@ -303,9 +325,37 @@ export default function InspectionForm() {
     setConclusionData({ ...conclusionData, [e.target.name]: e.target.value });
   };
 
-  const clearSignature = (ref: React.RefObject<HTMLDivElement | null>) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const clearSignature = (_ref: React.RefObject<HTMLDivElement | null>) => {
     // Esta função agora é gerenciada pelo componente SignaturePad
-    console.log("Assinatura limpa para:", ref);
+    // console.log("Assinatura limpa para:", ref);
+  };
+
+  // Função para verificar se uma assinatura está em branco
+  const isCanvasBlank = (canvas: HTMLCanvasElement): boolean => {
+    if (!canvas) return true;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return true;
+    
+    // Pegar os dados dos pixels
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const pixels = imageData.data;
+    
+    // Verificar se todos os pixels são brancos (RGBA: 255,255,255,255)
+    for (let i = 0; i < pixels.length; i += 4) {
+      const r = pixels[i];     // Red
+      const g = pixels[i + 1]; // Green  
+      const b = pixels[i + 2]; // Blue
+      const a = pixels[i + 3]; // Alpha
+      
+      // Se encontrarmos qualquer pixel que não seja branco, a assinatura não está em branco
+      if (r !== 255 || g !== 255 || b !== 255 || a !== 255) {
+        return false;
+      }
+    }
+    
+    return true; // Todos os pixels são brancos
   };
 
   const nextStep = () => setStep(s => Math.min(s + 1, 3));
@@ -319,24 +369,79 @@ export default function InspectionForm() {
 
     // Capturar dados das assinaturas dos canvas
     const canvases = document.querySelectorAll('canvas');
-    const signature1 = canvases[0] ? canvases[0].toDataURL() : '';
-    const signature2 = canvases[1] ? canvases[1].toDataURL() : '';
+    const signature1Canvas = canvases[0] as HTMLCanvasElement;
+    const signature2Canvas = canvases[1] as HTMLCanvasElement;
+    
+    const signature1 = signature1Canvas ? signature1Canvas.toDataURL() : '';
+    const signature2 = signature2Canvas ? signature2Canvas.toDataURL() : '';
+
+    // Verificar se as assinaturas estão em branco usando análise de pixels
+    const signature1IsBlank = signature1Canvas ? isCanvasBlank(signature1Canvas) : true;
+    const signature2IsBlank = signature2Canvas ? isCanvasBlank(signature2Canvas) : true;
+    
+    console.log("✍️ Status das assinaturas (análise de pixels):", {
+      signature1IsBlank,
+      signature2IsBlank,
+      signature1Size: signature1 ? signature1.length : 0,
+      signature2Size: signature2 ? signature2.length : 0
+    });
+
+    // Converter arquivos para base64
+    console.log("📷 Convertendo arquivos para base64...");
+    const processedItems = await Promise.all(
+      inspectionItems.map(async (item, index) => {
+        if (item.foto && item.foto instanceof File) {
+          return new Promise<{ item: number; fato: string; recomendacoes: string; prazo: string; responsavel: string; conclusao: string; foto: string }>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const base64 = e.target?.result as string;
+              console.log(`📷 Item ${index + 1} convertido:`, {
+                fileName: (item.foto as File)?.name,
+                base64Length: base64?.length || 0
+              });
+              resolve({
+                item: item.item,
+                fato: item.fato,
+                recomendacoes: item.recomendacoes,
+                prazo: item.prazo,
+                responsavel: item.responsavel,
+                conclusao: item.conclusao,
+                foto: base64
+              });
+            };
+            reader.readAsDataURL(item.foto as File);
+          });
+        } else {
+          return Promise.resolve({
+            item: item.item,
+            fato: item.fato,
+            recomendacoes: item.recomendacoes,
+            prazo: item.prazo,
+            responsavel: item.responsavel,
+            conclusao: item.conclusao,
+            foto: 'Nenhuma'
+          });
+        }
+      })
+    );
 
     const formData = {
       headerData,
       participants,
-      inspectionItems: inspectionItems.map(item => ({
-        ...item,
-        foto: item.foto ? item.foto.name : 'Nenhuma'
-      })),
+      inspectionItems: processedItems,
       conclusionData,
       signatures: {
-        responsavelInspecao: signature1,
-        responsavelUnidade: signature2,
+        responsavelInspecao: signature1IsBlank ? 'Não assinado' : signature1,
+        responsavelUnidade: signature2IsBlank ? 'Não assinado' : signature2,
       }
     };
 
-    console.log("Enviando os seguintes dados para /api/submit:", formData);
+    console.log("📤 Dados preparados para envio:", {
+      itemsCount: formData.inspectionItems.length,
+      hasSignature1: formData.signatures.responsavelInspecao !== 'Não assinado',
+      hasSignature2: formData.signatures.responsavelUnidade !== 'Não assinado',
+      itemsWithPhotos: formData.inspectionItems.filter(item => item.foto !== 'Nenhuma').length
+    });
 
     try {
       const response = await fetch('/api/submit', {
@@ -349,6 +454,13 @@ export default function InspectionForm() {
 
       if (response.ok) {
         console.log("Resposta da API:", result);
+        
+        // Guardar informações sobre warnings para exibir
+        if (result.warnings && result.warnings.length > 0) {
+          console.log("⚠️ Avisos recebidos:", result.warnings);
+          // Você pode armazenar os warnings em um estado se quiser exibi-los
+        }
+        
         setSubmissionStatus('success');
       } else {
         throw new Error(result.message || 'Falha no envio do formulário.');
@@ -475,7 +587,7 @@ export default function InspectionForm() {
                     <label className="block text-sm font-medium text-gray-300 mb-1">Evidência Fotográfica</label>
                     <label htmlFor={`foto-${index}`} className="w-full flex items-center justify-center gap-2 bg-gray-700 border-2 border-dashed border-gray-600 text-gray-400 rounded-lg p-3 cursor-pointer hover:bg-gray-600 hover:border-amber-500 hover:text-white transition">
                       <FileUp size={20} />
-                      <span>{item.foto ? item.foto.name : "Anexar foto"}</span>
+                      <span>{item.foto && item.foto instanceof File ? item.foto.name : "Anexar foto"}</span>
                     </label>
                     <input id={`foto-${index}`} name="foto" type="file" accept="image/*" onChange={(e) => handleItemChange(index, e)} className="hidden" />
                   </div>
