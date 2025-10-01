@@ -227,7 +227,7 @@ function generateInspectionPDF(data: RequestBody, inspectionId: string): Buffer 
   // Itens de inspeção
   if (data.inspectionItems.length > 0) {
     addText('ITENS DE INSPEÇÃO', 14, true);
-    data.inspectionItems.forEach((item, index) => {
+    data.inspectionItems.forEach((item) => {
       addText(`Item ${item.item}:`, 12, true);
       addText(`Fato Observado: ${item.fato}`, 10);
       addText(`Recomendações: ${item.recomendacoes}`, 10);
@@ -257,7 +257,7 @@ function generateInspectionPDF(data: RequestBody, inspectionId: string): Buffer 
 async function sendEmailWithPDF(email: string, pdfBuffer: Buffer, inspectionId: string): Promise<boolean> {
   try {
     // Configuração do transporter (usando Gmail como exemplo)
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: process.env.EMAIL_USER,
