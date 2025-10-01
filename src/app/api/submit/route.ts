@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { Storage } from '@google-cloud/storage';
+import nodemailer from 'nodemailer';
+import jsPDF from 'jspdf';
 
 // --- Interfaces para os dados do formulário ---
 interface HeaderData {
@@ -12,6 +14,7 @@ interface HeaderData {
   data: string;
   hora: string;
   local: string;
+  emailCompanhia: string;
 }
 
 interface Participant {
@@ -166,6 +169,126 @@ function isSignatureBlank(base64Data: string): boolean {
 }
 
 /**
+ * Gera PDF do relatório de inspeção
+ */
+function generateInspectionPDF(data: RequestBody, inspectionId: string): Buffer {
+  const doc = new jsPDF();
+  
+  // Configurações do PDF
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 20;
+  let yPosition = 20;
+  
+  // Função para adicionar texto com quebra de linha
+  const addText = (text: string, fontSize: number = 12, isBold: boolean = false) => {
+    doc.setFontSize(fontSize);
+    if (isBold) {
+      doc.setFont(undefined, 'bold');
+    } else {
+      doc.setFont(undefined, 'normal');
+    }
+    
+    const lines = doc.splitTextToSize(text, pageWidth - 2 * margin);
+    lines.forEach((line: string) => {
+      if (yPosition > doc.internal.pageSize.getHeight() - 20) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      doc.text(line, margin, yPosition);
+      yPosition += fontSize * 0.4;
+    });
+    yPosition += 5;
+  };
+
+  // Cabeçalho
+  addText('RELATÓRIO DE INSPEÇÃO', 16, true);
+  addText(`ID: ${inspectionId}`, 12, true);
+  addText(`Data: ${data.headerData.data} | Hora: ${data.headerData.hora}`, 10);
+  yPosition += 10;
+
+  // Dados do cabeçalho
+  addText('DADOS DA INSPEÇÃO', 14, true);
+  addText(`Departamento: ${data.headerData.departamento}`, 10);
+  addText(`Encarregado: ${data.headerData.encarregado}`, 10);
+  addText(`Responsável QSMS: ${data.headerData.responsavelQSMS}`, 10);
+  addText(`Gerente de Contrato: ${data.headerData.gerenteContrato}`, 10);
+  addText(`Unidade: ${data.headerData.unidade}`, 10);
+  addText(`Local: ${data.headerData.local}`, 10);
+  addText(`E-mail: ${data.headerData.emailCompanhia}`, 10);
+  yPosition += 10;
+
+  // Participantes
+  addText('PARTICIPANTES', 14, true);
+  data.participants.forEach((participant, index) => {
+    addText(`${index + 1}. ${participant.nome} - ${participant.funcao}`, 10);
+  });
+  yPosition += 10;
+
+  // Itens de inspeção
+  if (data.inspectionItems.length > 0) {
+    addText('ITENS DE INSPEÇÃO', 14, true);
+    data.inspectionItems.forEach((item, index) => {
+      addText(`Item ${item.item}:`, 12, true);
+      addText(`Fato Observado: ${item.fato}`, 10);
+      addText(`Recomendações: ${item.recomendacoes}`, 10);
+      addText(`Prazo: ${item.prazo}`, 10);
+      addText(`Responsável: ${item.responsavel}`, 10);
+      addText(`Conclusão: ${item.conclusao}`, 10);
+      yPosition += 5;
+    });
+  }
+
+  // Conclusão geral
+  addText('CONCLUSÃO GERAL', 14, true);
+  addText(data.conclusionData.conclusaoGeral, 10);
+  yPosition += 10;
+
+  // Assinaturas
+  addText('ASSINATURAS', 14, true);
+  addText('Responsável pela Inspeção: _________________________', 10);
+  addText('Responsável da Unidade: _________________________', 10);
+
+  return Buffer.from(doc.output('arraybuffer'));
+}
+
+/**
+ * Envia e-mail com PDF anexado
+ */
+async function sendEmailWithPDF(email: string, pdfBuffer: Buffer, inspectionId: string): Promise<boolean> {
+  try {
+    // Configuração do transporter (usando Gmail como exemplo)
+    const transporter = nodemailer.createTransporter({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: `Relatório de Inspeção - ${inspectionId}`,
+      text: `Segue em anexo o relatório de inspeção ${inspectionId}.`,
+      attachments: [
+        {
+          filename: `relatorio_inspecao_${inspectionId}.pdf`,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
+        },
+      ],
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ E-mail enviado com sucesso para: ${email}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Erro ao enviar e-mail:', error);
+    return false;
+  }
+}
+
+/**
  * Função para testar conectividade com Google Cloud Storage
  */
 async function testCloudStorageConnection(): Promise<boolean> {
@@ -285,6 +408,24 @@ export async function POST(request: NextRequest) {
     const participantNames = participants.map(p => p.nome).join(', ');
     const participantFunctions = participants.map(p => p.funcao).join(', ');
 
+    // Gerar PDF do relatório
+    console.log("📄 Gerando PDF do relatório...");
+    const pdfBuffer = generateInspectionPDF(body, inspectionId);
+    console.log("✅ PDF gerado com sucesso");
+
+    // Enviar e-mail com PDF se o e-mail foi fornecido
+    if (headerData.emailCompanhia && headerData.emailCompanhia.trim() !== '') {
+      console.log(`📧 Enviando e-mail para: ${headerData.emailCompanhia}`);
+      const emailSent = await sendEmailWithPDF(headerData.emailCompanhia, pdfBuffer, inspectionId);
+      if (emailSent) {
+        console.log("✅ E-mail enviado com sucesso");
+      } else {
+        console.log("⚠️ Falha no envio do e-mail, mas continuando com o processo");
+      }
+    } else {
+      console.log("⚠️ E-mail da companhia não fornecido, pulando envio de e-mail");
+    }
+
     // Verificar se as assinaturas estão em branco
     const signature1IsBlank = signatures.responsavelInspecao === 'Não assinado' || isSignatureBlank(signatures.responsavelInspecao);
     const signature2IsBlank = signatures.responsavelUnidade === 'Não assinado' || isSignatureBlank(signatures.responsavelUnidade);
@@ -384,6 +525,7 @@ export async function POST(request: NextRequest) {
           headerData.gerenteContrato || '',
           headerData.unidade || '',
           headerData.local || '',
+          headerData.emailCompanhia || '',
           participantNames,
           participantFunctions,
           item.fato || '',
@@ -405,7 +547,7 @@ export async function POST(request: NextRequest) {
       rowsToAppend.push([
         inspectionId, headerData.data || '', headerData.hora || '', headerData.departamento || '',
         headerData.encarregado || '', headerData.responsavelQSMS || '', headerData.gerenteContrato || '',
-        headerData.unidade || '', headerData.local || '', participantNames, participantFunctions,
+        headerData.unidade || '', headerData.local || '', headerData.emailCompanhia || '', participantNames, participantFunctions,
         'N/A', 'Nenhum item de inspeção foi adicionado.', '', '', '', 'Nenhuma',
         conclusionData.conclusaoGeral || '',
         signatureLink1,
@@ -418,7 +560,7 @@ export async function POST(request: NextRequest) {
     console.log("📤 Enviando para Google Sheets...");
     const appendResponse = await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'Mapa de Controle!A:U',
+      range: 'Mapa de Controle!A:V',
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: rowsToAppend,

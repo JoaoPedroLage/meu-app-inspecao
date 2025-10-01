@@ -42,6 +42,7 @@ interface HeaderData {
   data: string;
   hora: string;
   local: string;
+  emailCompanhia: string;
 }
 
 interface Participant {
@@ -239,6 +240,7 @@ export default function InspectionForm() {
     data: '',
     hora: '',
     local: '',
+    emailCompanhia: '',
   });
 
   const [participants, setParticipants] = useState<Participant[]>([{ nome: '', funcao: '' }]);
@@ -553,6 +555,7 @@ export default function InspectionForm() {
                 <InputField label="Data" name="data" type="date" value={headerData.data} onChange={handleHeaderChange} placeholder="" />
                 <InputField label="Hora" name="hora" type="time" value={headerData.hora} onChange={handleHeaderChange} placeholder="" />
                 <InputField label="Local da Inspeção" name="local" value={headerData.local} onChange={handleHeaderChange} placeholder="Ex: Frente de lavra 3" />
+                <InputField label="E-mail da Companhia" name="emailCompanhia" type="email" value={headerData.emailCompanhia} onChange={handleHeaderChange} placeholder="exemplo@empresa.com" />
               </div>
 
               <div className="pt-4">
