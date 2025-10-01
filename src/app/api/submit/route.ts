@@ -234,17 +234,17 @@ function generateInspectionPDF(
     doc.setTextColor(0, 0, 0);
   };
 
-  // Cabeçalho
-  addText('RELATÓRIO DE INSPEÇÃO', 16, true);
+  // Cabecalho
+  addText('RELATORIO DE INSPECAO', 16, true);
   addText(`ID: ${inspectionId}`, 12, true);
   addText(`Data: ${data.headerData.data} | Hora: ${data.headerData.hora}`, 10);
   yPosition += 10;
 
-  // Dados do cabeçalho
-  addText('DADOS DA INSPEÇÃO', 14, true);
+  // Dados do cabecalho
+  addText('DADOS DA INSPECAO', 14, true);
   addText(`Departamento: ${data.headerData.departamento}`, 10);
   addText(`Encarregado: ${data.headerData.encarregado}`, 10);
-  addText(`Responsável QSMS: ${data.headerData.responsavelQSMS}`, 10);
+  addText(`Responsavel QSMS: ${data.headerData.responsavelQSMS}`, 10);
   addText(`Gerente de Contrato: ${data.headerData.gerenteContrato}`, 10);
   addText(`Unidade: ${data.headerData.unidade}`, 10);
   addText(`Local: ${data.headerData.local}`, 10);
@@ -258,18 +258,18 @@ function generateInspectionPDF(
   });
   yPosition += 10;
 
-  // Itens de inspeção
+  // Itens de inspecao
   if (data.inspectionItems.length > 0) {
-    addText('ITENS DE INSPEÇÃO', 14, true);
+    addText('ITENS DE INSPECAO', 14, true);
     data.inspectionItems.forEach((item, index) => {
       addText(`Item ${item.item}:`, 12, true);
       addText(`Fato Observado: ${item.fato}`, 10);
       
-      // Evidência fotográfica com hyperlink
+      // Evidencia fotografica com hyperlink
       const evidenceUrl = evidenceUrls[index];
-      addText('📷 Evidência Fotográfica:', 10);
+      addText('Evidencia Fotografica:', 10);
       if (evidenceUrl && evidenceUrl !== 'Nenhuma' && !evidenceUrl.includes('❌')) {
-        addLink('🔗 Ver Evidência', evidenceUrl, 10);
+        addLink('Ver Evidencia', evidenceUrl, 10);
       } else if (evidenceUrl && evidenceUrl.includes('❌')) {
         addText(evidenceUrl, 10);
       } else {
@@ -284,8 +284,8 @@ function generateInspectionPDF(
     });
   }
 
-  // Conclusão geral
-  addText('CONCLUSÃO GERAL', 14, true);
+  // Conclusao geral
+  addText('CONCLUSAO GERAL', 14, true);
   addText(data.conclusionData.conclusaoGeral, 10);
   yPosition += 10;
 
@@ -293,17 +293,17 @@ function generateInspectionPDF(
   addText('ASSINATURAS', 14, true);
   
   // Assinatura 1
-  addText('Responsável pela Inspeção:', 10, true);
+  addText('Responsavel pela Inspecao:', 10, true);
   if (signatureUrls.signature1 && signatureUrls.signature1 !== 'Não assinado' && !signatureUrls.signature1.includes('❌')) {
-    addLink('🔗 Ver Assinatura', signatureUrls.signature1, 10);
+    addLink('Ver Assinatura', signatureUrls.signature1, 10);
   } else {
     addText(signatureUrls.signature1.includes('❌') ? signatureUrls.signature1 : 'Não assinado', 10);
   }
   
   // Assinatura 2
-  addText('Responsável da Unidade:', 10, true);
+  addText('Responsavel da Unidade:', 10, true);
   if (signatureUrls.signature2 && signatureUrls.signature2 !== 'Não assinado' && !signatureUrls.signature2.includes('❌')) {
-    addLink('🔗 Ver Assinatura', signatureUrls.signature2, 10);
+    addLink('Ver Assinatura', signatureUrls.signature2, 10);
   } else {
     addText(signatureUrls.signature2.includes('❌') ? signatureUrls.signature2 : 'Não assinado', 10);
   }
