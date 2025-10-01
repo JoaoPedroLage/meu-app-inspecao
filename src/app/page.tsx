@@ -547,6 +547,8 @@ export default function InspectionForm() {
             <section className="space-y-6 animate-fade-in">
               <h2 className="text-2xl font-semibold text-amber-400 border-l-4 border-amber-400 pl-4">Cabeçalho da Inspeção</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <InputField label="E-mail da Companhia (Profissional)" name="emailCompanhia" type="email" value={headerData.emailCompanhia} onChange={handleHeaderChange} placeholder="exemplo@empresa.com" />
+                <br />
                 <InputField label="Departamento" name="departamento" value={headerData.departamento} onChange={handleHeaderChange} placeholder="Ex: Manutenção de Frota" />
                 <InputField label="Encarregado" name="encarregado" value={headerData.encarregado} onChange={handleHeaderChange} placeholder="Nome do encarregado" />
                 <InputField label="Responsável QSMS" name="responsavelQSMS" value={headerData.responsavelQSMS} onChange={handleHeaderChange} placeholder="Nome do responsável" />
@@ -555,7 +557,6 @@ export default function InspectionForm() {
                 <InputField label="Data" name="data" type="date" value={headerData.data} onChange={handleHeaderChange} placeholder="" />
                 <InputField label="Hora" name="hora" type="time" value={headerData.hora} onChange={handleHeaderChange} placeholder="" />
                 <InputField label="Local da Inspeção" name="local" value={headerData.local} onChange={handleHeaderChange} placeholder="Ex: Frente de lavra 3" />
-                <InputField label="E-mail da Companhia" name="emailCompanhia" type="email" value={headerData.emailCompanhia} onChange={handleHeaderChange} placeholder="exemplo@empresa.com" />
               </div>
 
               <div className="pt-4">
