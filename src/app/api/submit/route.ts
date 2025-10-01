@@ -212,14 +212,22 @@ function generateInspectionPDF(
     doc.setTextColor(0, 0, 255); // Cor azul para links
     
     const lines = doc.splitTextToSize(text, pageWidth - 2 * margin);
+    const startY = yPosition;
+    
     lines.forEach((line: string) => {
       if (yPosition > doc.internal.pageSize.getHeight() - 20) {
         doc.addPage();
         yPosition = 20;
       }
-      doc.textWithLink(line, margin, yPosition, { url: url });
+      doc.text(line, margin, yPosition);
       yPosition += fontSize * 0.4;
     });
+    
+    // Adicionar anotação de link usando coordenadas corretas
+    const textHeight = fontSize * 0.4;
+    const linkHeight = lines.length * textHeight;
+    doc.link(margin, startY - textHeight, pageWidth - 2 * margin, linkHeight, { url: url });
+    
     yPosition += 5;
     
     // Resetar cor para texto normal
