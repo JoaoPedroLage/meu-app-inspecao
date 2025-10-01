@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { Storage } from '@google-cloud/storage';
 import nodemailer from 'nodemailer';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 
 // --- Interfaces para os dados do formulário ---
 interface HeaderData {
@@ -205,6 +205,27 @@ function generateInspectionPDF(
     yPosition += 5;
   };
 
+  // Função para adicionar link clicável
+  const addLink = (text: string, url: string, fontSize: number = 10) => {
+    doc.setFontSize(fontSize);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 255); // Cor azul para links
+    
+    const lines = doc.splitTextToSize(text, pageWidth - 2 * margin);
+    lines.forEach((line: string) => {
+      if (yPosition > doc.internal.pageSize.getHeight() - 20) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      doc.textWithLink(line, margin, yPosition, { url: url });
+      yPosition += fontSize * 0.4;
+    });
+    yPosition += 5;
+    
+    // Resetar cor para texto normal
+    doc.setTextColor(0, 0, 0);
+  };
+
   // Cabeçalho
   addText('RELATÓRIO DE INSPEÇÃO', 16, true);
   addText(`ID: ${inspectionId}`, 12, true);
@@ -238,12 +259,13 @@ function generateInspectionPDF(
       
       // Evidência fotográfica com hyperlink
       const evidenceUrl = evidenceUrls[index];
+      addText('📷 Evidência Fotográfica:', 10);
       if (evidenceUrl && evidenceUrl !== 'Nenhuma' && !evidenceUrl.includes('❌')) {
-        addText(`📷 Evidência Fotográfica: 🔗 Ver Evidência - ${evidenceUrl}`, 10);
+        addLink('🔗 Ver Evidência', evidenceUrl, 10);
       } else if (evidenceUrl && evidenceUrl.includes('❌')) {
-        addText(`📷 Evidência Fotográfica: ${evidenceUrl}`, 10);
+        addText(evidenceUrl, 10);
       } else {
-        addText(`📷 Evidência Fotográfica: Nenhuma`, 10);
+        addText('Nenhuma', 10);
       }
       
       addText(`Recomendações: ${item.recomendacoes}`, 10);
@@ -263,19 +285,19 @@ function generateInspectionPDF(
   addText('ASSINATURAS', 14, true);
   
   // Assinatura 1
-  if (signatureUrls.signature1 && signatureUrls.signature1 !== 'Não assinado') {
-    addText('Responsável pela Inspeção:', 10, true);
-    addText(`🔗 Ver Assinatura: ${signatureUrls.signature1}`, 10);
+  addText('Responsável pela Inspeção:', 10, true);
+  if (signatureUrls.signature1 && signatureUrls.signature1 !== 'Não assinado' && !signatureUrls.signature1.includes('❌')) {
+    addLink('🔗 Ver Assinatura', signatureUrls.signature1, 10);
   } else {
-    addText('Responsável pela Inspeção: Não assinado', 10);
+    addText(signatureUrls.signature1.includes('❌') ? signatureUrls.signature1 : 'Não assinado', 10);
   }
   
   // Assinatura 2
-  if (signatureUrls.signature2 && signatureUrls.signature2 !== 'Não assinado') {
-    addText('Responsável da Unidade:', 10, true);
-    addText(`🔗 Ver Assinatura: ${signatureUrls.signature2}`, 10);
+  addText('Responsável da Unidade:', 10, true);
+  if (signatureUrls.signature2 && signatureUrls.signature2 !== 'Não assinado' && !signatureUrls.signature2.includes('❌')) {
+    addLink('🔗 Ver Assinatura', signatureUrls.signature2, 10);
   } else {
-    addText('Responsável da Unidade: Não assinado', 10);
+    addText(signatureUrls.signature2.includes('❌') ? signatureUrls.signature2 : 'Não assinado', 10);
   }
 
   return Buffer.from(doc.output('arraybuffer'));
