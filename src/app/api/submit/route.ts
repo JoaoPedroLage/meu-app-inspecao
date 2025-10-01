@@ -171,7 +171,12 @@ function isSignatureBlank(base64Data: string): boolean {
 /**
  * Gera PDF do relatório de inspeção
  */
-function generateInspectionPDF(data: RequestBody, inspectionId: string): Buffer {
+function generateInspectionPDF(
+  data: RequestBody, 
+  inspectionId: string, 
+  signatureUrls: { signature1: string; signature2: string },
+  evidenceUrls: { [key: number]: string }
+): Buffer {
   const doc = new jsPDF();
   
   // Configurações do PDF
@@ -227,9 +232,20 @@ function generateInspectionPDF(data: RequestBody, inspectionId: string): Buffer 
   // Itens de inspeção
   if (data.inspectionItems.length > 0) {
     addText('ITENS DE INSPEÇÃO', 14, true);
-    data.inspectionItems.forEach((item) => {
+    data.inspectionItems.forEach((item, index) => {
       addText(`Item ${item.item}:`, 12, true);
       addText(`Fato Observado: ${item.fato}`, 10);
+      
+      // Evidência fotográfica com hyperlink
+      const evidenceUrl = evidenceUrls[index];
+      if (evidenceUrl && evidenceUrl !== 'Nenhuma' && !evidenceUrl.includes('❌')) {
+        addText(`📷 Evidência Fotográfica: 🔗 Ver Evidência - ${evidenceUrl}`, 10);
+      } else if (evidenceUrl && evidenceUrl.includes('❌')) {
+        addText(`📷 Evidência Fotográfica: ${evidenceUrl}`, 10);
+      } else {
+        addText(`📷 Evidência Fotográfica: Nenhuma`, 10);
+      }
+      
       addText(`Recomendações: ${item.recomendacoes}`, 10);
       addText(`Prazo: ${item.prazo}`, 10);
       addText(`Responsável: ${item.responsavel}`, 10);
@@ -245,8 +261,22 @@ function generateInspectionPDF(data: RequestBody, inspectionId: string): Buffer 
 
   // Assinaturas
   addText('ASSINATURAS', 14, true);
-  addText('Responsável pela Inspeção: _________________________', 10);
-  addText('Responsável da Unidade: _________________________', 10);
+  
+  // Assinatura 1
+  if (signatureUrls.signature1 && signatureUrls.signature1 !== 'Não assinado') {
+    addText('Responsável pela Inspeção:', 10, true);
+    addText(`🔗 Ver Assinatura: ${signatureUrls.signature1}`, 10);
+  } else {
+    addText('Responsável pela Inspeção: Não assinado', 10);
+  }
+  
+  // Assinatura 2
+  if (signatureUrls.signature2 && signatureUrls.signature2 !== 'Não assinado') {
+    addText('Responsável da Unidade:', 10, true);
+    addText(`🔗 Ver Assinatura: ${signatureUrls.signature2}`, 10);
+  } else {
+    addText('Responsável da Unidade: Não assinado', 10);
+  }
 
   return Buffer.from(doc.output('arraybuffer'));
 }
@@ -408,23 +438,9 @@ export async function POST(request: NextRequest) {
     const participantNames = participants.map(p => p.nome).join(', ');
     const participantFunctions = participants.map(p => p.funcao).join(', ');
 
-    // Gerar PDF do relatório
-    console.log("📄 Gerando PDF do relatório...");
-    const pdfBuffer = generateInspectionPDF(body, inspectionId);
-    console.log("✅ PDF gerado com sucesso");
-
-    // Enviar e-mail com PDF se o e-mail foi fornecido
-    if (headerData.emailCompanhia && headerData.emailCompanhia.trim() !== '') {
-      console.log(`📧 Enviando e-mail para: ${headerData.emailCompanhia}`);
-      const emailSent = await sendEmailWithPDF(headerData.emailCompanhia, pdfBuffer, inspectionId);
-      if (emailSent) {
-        console.log("✅ E-mail enviado com sucesso");
-      } else {
-        console.log("⚠️ Falha no envio do e-mail, mas continuando com o processo");
-      }
-    } else {
-      console.log("⚠️ E-mail da companhia não fornecido, pulando envio de e-mail");
-    }
+    // Preparar URLs para o PDF (serão preenchidas após o upload das imagens)
+    const signatureUrls = { signature1: 'Não assinado', signature2: 'Não assinado' };
+    const evidenceUrls: { [key: number]: string } = {};
 
     // Verificar se as assinaturas estão em branco
     const signature1IsBlank = signatures.responsavelInspecao === 'Não assinado' || isSignatureBlank(signatures.responsavelInspecao);
@@ -469,8 +485,10 @@ export async function POST(request: NextRequest) {
     if (!signature1IsBlank) {
       if (signature1Result.success && signature1Result.url) {
         signatureLink1 = `=HYPERLINK("${signature1Result.url}"; "Ver Assinatura")`;
+        signatureUrls.signature1 = signature1Result.url; // URL para o PDF
       } else {
         signatureLink1 = `❌ Falha no upload: ${signature1Result.error || 'Erro desconhecido'}`;
+        signatureUrls.signature1 = `❌ Falha no upload: ${signature1Result.error || 'Erro desconhecido'}`;
       }
     }
 
@@ -478,8 +496,10 @@ export async function POST(request: NextRequest) {
     if (!signature2IsBlank) {
       if (signature2Result.success && signature2Result.url) {
         signatureLink2 = `=HYPERLINK("${signature2Result.url}"; "Ver Assinatura")`;
+        signatureUrls.signature2 = signature2Result.url; // URL para o PDF
       } else {
         signatureLink2 = `❌ Falha no upload: ${signature2Result.error || 'Erro desconhecido'}`;
+        signatureUrls.signature2 = `❌ Falha no upload: ${signature2Result.error || 'Erro desconhecido'}`;
       }
     }
 
@@ -510,9 +530,13 @@ export async function POST(request: NextRequest) {
         if (item.foto && item.foto !== 'Nenhuma') {
           if (photoResult.success && photoResult.url) {
             evidenceText = `=HYPERLINK("${photoResult.url}"; "Ver Evidência")`;
+            evidenceUrls[index] = photoResult.url; // URL para o PDF
           } else {
             evidenceText = `❌ Falha no upload: ${photoResult.error || 'Erro desconhecido'}`;
+            evidenceUrls[index] = `❌ Falha no upload: ${photoResult.error || 'Erro desconhecido'}`;
           }
+        } else {
+          evidenceUrls[index] = 'Nenhuma';
         }
 
         return [
@@ -556,6 +580,24 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("📝 Dados formatados para planilha:", rowsToAppend.length, "linhas");
+
+    // Gerar PDF do relatório com URLs das assinaturas e evidências
+    console.log("📄 Gerando PDF do relatório...");
+    const pdfBuffer = generateInspectionPDF(body, inspectionId, signatureUrls, evidenceUrls);
+    console.log("✅ PDF gerado com sucesso");
+
+    // Enviar e-mail com PDF se o e-mail foi fornecido
+    if (headerData.emailCompanhia && headerData.emailCompanhia.trim() !== '') {
+      console.log(`📧 Enviando e-mail para: ${headerData.emailCompanhia}`);
+      const emailSent = await sendEmailWithPDF(headerData.emailCompanhia, pdfBuffer, inspectionId);
+      if (emailSent) {
+        console.log("✅ E-mail enviado com sucesso");
+      } else {
+        console.log("⚠️ Falha no envio do e-mail, mas continuando com o processo");
+      }
+    } else {
+      console.log("⚠️ E-mail da companhia não fornecido, pulando envio de e-mail");
+    }
 
     console.log("📤 Enviando para Google Sheets...");
     const appendResponse = await sheets.spreadsheets.values.append({
