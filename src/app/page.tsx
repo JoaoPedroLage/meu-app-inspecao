@@ -2,10 +2,6 @@
 
 import { useState, useRef, ChangeEvent, FormEvent, useEffect, useCallback } from 'react';
 import { FileUp, PlusCircle, Trash2, ChevronLeft, ChevronRight, CheckCircle, XCircle } from 'lucide-react';
-// import Image from 'next/image';
-
-// Mock de imagem do logo - substitua pela URL do seu logo
-// const LOGO_URL = '/logo.png';
 
 // TypeScript interfaces
 interface InputFieldProps {
@@ -27,9 +23,18 @@ interface TextareaFieldProps {
   required?: boolean;
 }
 
+interface SelectFieldProps {
+  label: string;
+  value: string;
+  onChange: (e: ChangeEvent<HTMLSelectElement>) => void;
+  name: string;
+  options: { label: string; value: string }[];
+  required?: boolean;
+}
+
 interface SignaturePadProps {
   title: string;
-  signatureRef?: React.RefObject<HTMLDivElement | null>; // Make optional since we're not using it
+  signatureRef?: React.RefObject<HTMLDivElement | null>;
   onClear: () => void;
 }
 
@@ -56,8 +61,9 @@ interface InspectionItem {
   recomendacoes: string;
   prazo: string;
   responsavel: string;
+  status: string; // Novo campo
   conclusao: string;
-  foto: File | null;
+  fotos: File[]; // Alterado de File | null para array de arquivos
 }
 
 interface ConclusionData {
@@ -97,6 +103,28 @@ const TextareaField = ({ label, value, onChange, placeholder, name, required = t
       rows={4}
       className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-shadow duration-300"
     />
+  </div>
+);
+
+// Componente para campo de seleção (Dropdown)
+const SelectField = ({ label, value, onChange, name, options, required = true }: SelectFieldProps) => (
+  <div>
+    <label htmlFor={name} className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
+    <select
+      id={name}
+      name={name}
+      value={value}
+      onChange={onChange}
+      required={required}
+      className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-shadow duration-300 appearance-none"
+    >
+      <option value="" disabled>Selecione uma opção</option>
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
   </div>
 );
 
@@ -181,14 +209,12 @@ const SignaturePad = ({ title, onClear }: SignaturePadProps) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Set canvas size
     canvas.width = 400;
     canvas.height = 150;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set up drawing context
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = '#000000';
@@ -244,16 +270,15 @@ export default function InspectionForm() {
   });
 
   const [participants, setParticipants] = useState<Participant[]>([{ nome: '', funcao: '' }]);
+  
+  // Atualizado para inicializar status vazio e fotos como array
   const [inspectionItems, setInspectionItems] = useState<InspectionItem[]>([
-    { item: 1, fato: '', recomendacoes: '', prazo: '', responsavel: '', conclusao: '', foto: null }
+    { item: 1, fato: '', recomendacoes: '', prazo: '', responsavel: '', status: '', conclusao: '', fotos: [] }
   ]);
 
   const [conclusionData, setConclusionData] = useState<ConclusionData>({
     conclusaoGeral: '',
   });
-
-  const signature1Ref = useRef<HTMLDivElement | null>(null);
-  const signature2Ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -280,42 +305,38 @@ export default function InspectionForm() {
     setParticipants(newParticipants);
   };
 
-  const handleItemChange = (index: number, e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleItemChange = (index: number, e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    const files = (e.target as HTMLInputElement).files;
     const newItems = [...inspectionItems];
     
-    if (name === 'foto') {
-      const file = files?.[0] || null;
-      console.log(`📷 Foto selecionada para item ${index + 1}:`, {
-        fileName: file?.name || 'Nenhuma',
-        fileSize: file?.size || 0,
-        fileType: file?.type || 'N/A'
-      });
-      
-      // Converter para base64 para enviar na API
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const base64 = e.target?.result as string;
-          console.log(`📷 Arquivo convertido para base64:`, {
-            fileName: file.name,
-            base64Length: base64?.length || 0,
-            preview: base64?.substring(0, 50) + '...'
-          });
+    if (name === 'fotos') {
+      const input = e.target as HTMLInputElement;
+      if (input.files) {
+        const newFiles = Array.from(input.files);
+        // Adiciona as novas fotos ao array existente
+        newItems[index] = { 
+          ...newItems[index], 
+          fotos: [...newItems[index].fotos, ...newFiles] 
         };
-        reader.readAsDataURL(file);
+        console.log(`📷 Adicionadas ${newFiles.length} fotos para item ${index + 1}. Total: ${newItems[index].fotos.length}`);
       }
-      
-      newItems[index] = { ...newItems[index], [name]: file };
     } else {
       newItems[index] = { ...newItems[index], [name]: value };
     }
     setInspectionItems(newItems);
   };
 
+  const removePhoto = (itemIndex: number, photoIndex: number) => {
+    const newItems = [...inspectionItems];
+    newItems[itemIndex].fotos = newItems[itemIndex].fotos.filter((_, i) => i !== photoIndex);
+    setInspectionItems(newItems);
+  };
+
   const addItem = () => {
-    setInspectionItems([...inspectionItems, { item: inspectionItems.length + 1, fato: '', recomendacoes: '', prazo: '', responsavel: '', conclusao: '', foto: null }]);
+    setInspectionItems([
+      ...inspectionItems, 
+      { item: inspectionItems.length + 1, fato: '', recomendacoes: '', prazo: '', responsavel: '', status: '', conclusao: '', fotos: [] }
+    ]);
   };
 
   const removeItem = (index: number) => {
@@ -327,37 +348,22 @@ export default function InspectionForm() {
     setConclusionData({ ...conclusionData, [e.target.name]: e.target.value });
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const clearSignature = (_ref: React.RefObject<HTMLDivElement | null>) => {
-    // Esta função agora é gerenciada pelo componente SignaturePad
-    // console.log("Assinatura limpa para:", ref);
-  };
+  const clearSignature = () => {};
 
-  // Função para verificar se uma assinatura está em branco
   const isCanvasBlank = (canvas: HTMLCanvasElement): boolean => {
     if (!canvas) return true;
-    
     const ctx = canvas.getContext('2d');
     if (!ctx) return true;
     
-    // Pegar os dados dos pixels
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imageData.data;
     
-    // Verificar se todos os pixels são brancos (RGBA: 255,255,255,255)
     for (let i = 0; i < pixels.length; i += 4) {
-      const r = pixels[i];     // Red
-      const g = pixels[i + 1]; // Green  
-      const b = pixels[i + 2]; // Blue
-      const a = pixels[i + 3]; // Alpha
-      
-      // Se encontrarmos qualquer pixel que não seja branco, a assinatura não está em branco
-      if (r !== 255 || g !== 255 || b !== 255 || a !== 255) {
+      if (pixels[i] !== 255 || pixels[i + 1] !== 255 || pixels[i + 2] !== 255 || pixels[i + 3] !== 255) {
         return false;
       }
     }
-    
-    return true; // Todos os pixels são brancos
+    return true;
   };
 
   const nextStep = () => setStep(s => Math.min(s + 1, 3));
@@ -369,7 +375,6 @@ export default function InspectionForm() {
     setIsLoading(true);
     setSubmissionStatus(null);
 
-    // Capturar dados das assinaturas dos canvas
     const canvases = document.querySelectorAll('canvas');
     const signature1Canvas = canvases[0] as HTMLCanvasElement;
     const signature2Canvas = canvases[1] as HTMLCanvasElement;
@@ -377,53 +382,33 @@ export default function InspectionForm() {
     const signature1 = signature1Canvas ? signature1Canvas.toDataURL() : '';
     const signature2 = signature2Canvas ? signature2Canvas.toDataURL() : '';
 
-    // Verificar se as assinaturas estão em branco usando análise de pixels
     const signature1IsBlank = signature1Canvas ? isCanvasBlank(signature1Canvas) : true;
     const signature2IsBlank = signature2Canvas ? isCanvasBlank(signature2Canvas) : true;
-    
-    console.log("✍️ Status das assinaturas (análise de pixels):", {
-      signature1IsBlank,
-      signature2IsBlank,
-      signature1Size: signature1 ? signature1.length : 0,
-      signature2Size: signature2 ? signature2.length : 0
-    });
 
-    // Converter arquivos para base64
-    console.log("📷 Convertendo arquivos para base64...");
+    console.log("📷 Convertendo múltiplos arquivos para base64...");
     const processedItems = await Promise.all(
-      inspectionItems.map(async (item, index) => {
-        if (item.foto && item.foto instanceof File) {
-          return new Promise<{ item: number; fato: string; recomendacoes: string; prazo: string; responsavel: string; conclusao: string; foto: string }>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              const base64 = e.target?.result as string;
-              console.log(`📷 Item ${index + 1} convertido:`, {
-                fileName: (item.foto as File)?.name,
-                base64Length: base64?.length || 0
-              });
-              resolve({
-                item: item.item,
-                fato: item.fato,
-                recomendacoes: item.recomendacoes,
-                prazo: item.prazo,
-                responsavel: item.responsavel,
-                conclusao: item.conclusao,
-                foto: base64
-              });
-            };
-            reader.readAsDataURL(item.foto as File);
-          });
-        } else {
-          return Promise.resolve({
-            item: item.item,
-            fato: item.fato,
-            recomendacoes: item.recomendacoes,
-            prazo: item.prazo,
-            responsavel: item.responsavel,
-            conclusao: item.conclusao,
-            foto: 'Nenhuma'
-          });
-        }
+      inspectionItems.map(async (item) => {
+        // Converte o array de fotos em um array de strings em Base64
+        const base64Fotos = await Promise.all(
+          item.fotos.map((file) => {
+            return new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target?.result as string);
+              reader.readAsDataURL(file);
+            });
+          })
+        );
+
+        return {
+          item: item.item,
+          fato: item.fato,
+          recomendacoes: item.recomendacoes,
+          prazo: item.prazo,
+          responsavel: item.responsavel,
+          status: item.status,
+          conclusao: item.conclusao,
+          fotos: base64Fotos.length > 0 ? base64Fotos : ['Nenhuma']
+        };
       })
     );
 
@@ -441,8 +426,7 @@ export default function InspectionForm() {
     console.log("📤 Dados preparados para envio:", {
       itemsCount: formData.inspectionItems.length,
       hasSignature1: formData.signatures.responsavelInspecao !== 'Não assinado',
-      hasSignature2: formData.signatures.responsavelUnidade !== 'Não assinado',
-      itemsWithPhotos: formData.inspectionItems.filter(item => item.foto !== 'Nenhuma').length
+      hasSignature2: formData.signatures.responsavelUnidade !== 'Não assinado'
     });
 
     try {
@@ -455,14 +439,6 @@ export default function InspectionForm() {
       const result = await response.json();
 
       if (response.ok) {
-        console.log("Resposta da API:", result);
-        
-        // Guardar informações sobre warnings para exibir
-        if (result.warnings && result.warnings.length > 0) {
-          console.log("⚠️ Avisos recebidos:", result.warnings);
-          // Você pode armazenar os warnings em um estado se quiser exibi-los
-        }
-        
         setSubmissionStatus('success');
       } else {
         throw new Error(result.message || 'Falha no envio do formulário.');
@@ -475,9 +451,7 @@ export default function InspectionForm() {
     }
   };
 
-  if (!mounted) {
-    return null; // Prevent hydration mismatch
-  }
+  if (!mounted) return null;
 
   if (submissionStatus) {
     return (
@@ -506,15 +480,6 @@ export default function InspectionForm() {
     <div className="min-h-screen bg-gray-900 text-white font-sans">
       <header className="bg-gray-800 p-3 md:p-4 shadow-lg">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
-          {/* <div className="bg-white p-1.5 md:p-2 rounded flex-shrink-0">
-            <Image
-              src={LOGO_URL}
-              alt="Logo da Empresa"
-              width={32}
-              height={32}
-              className="h-8 w-8 md:h-10 md:w-10"
-            />
-          </div> */}
           <h1 className="text-sm md:text-xl font-bold text-amber-500 text-center flex-1 ml-3 md:ml-0">
             Relatório de Inspeção
           </h1>
@@ -522,7 +487,6 @@ export default function InspectionForm() {
       </header>
 
       <main className="p-4 md:p-8 max-w-4xl mx-auto">
-        {/* Stepper */}
         <div className="mb-8">
           <div className="flex items-center justify-center">
             {[1, 2, 3].map((s) => (
@@ -539,7 +503,6 @@ export default function InspectionForm() {
             {step === 2 && "2. Detalhes da Inspeção"}
             {step === 3 && "3. Conclusão e Assinaturas"}
           </div>
-
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -588,19 +551,49 @@ export default function InspectionForm() {
                   <TextareaField label="Fato Observado" name="fato" value={item.fato} onChange={(e) => handleItemChange(index, e)} placeholder="Descrever irregularidade ou regularidade..." />
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Evidência Fotográfica</label>
-                    <label htmlFor={`foto-${index}`} className="w-full flex items-center justify-center gap-2 bg-gray-700 border-2 border-dashed border-gray-600 text-gray-400 rounded-lg p-3 cursor-pointer hover:bg-gray-600 hover:border-amber-500 hover:text-white transition">
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Evidências Fotográficas</label>
+                    <label htmlFor={`fotos-${index}`} className="w-full flex items-center justify-center gap-2 bg-gray-700 border-2 border-dashed border-gray-600 text-gray-400 rounded-lg p-3 cursor-pointer hover:bg-gray-600 hover:border-amber-500 hover:text-white transition">
                       <FileUp size={20} />
-                      <span>{item.foto && item.foto instanceof File ? item.foto.name : "Anexar foto"}</span>
+                      <span>{item.fotos.length > 0 ? `Adicionar mais fotos (${item.fotos.length} anexadas)` : "Anexar fotos"}</span>
                     </label>
-                    <input id={`foto-${index}`} name="foto" type="file" accept="image/*" onChange={(e) => handleItemChange(index, e)} className="hidden" />
+                    {/* Campo de arquivo agora suporta "multiple" */}
+                    <input id={`fotos-${index}`} name="fotos" type="file" accept="image/*" multiple onChange={(e) => handleItemChange(index, e)} className="hidden" />
+                    
+                    {/* Exibe a lista de fotos adicionadas com opção de remover */}
+                    {item.fotos.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {item.fotos.map((foto, fIndex) => (
+                          <div key={fIndex} className="flex justify-between items-center bg-gray-600 px-3 py-2 rounded-lg text-sm">
+                            <span className="truncate max-w-[85%]">{foto.name}</span>
+                            <button type="button" onClick={() => removePhoto(index, fIndex)} className="text-red-400 hover:text-red-300 transition">
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <TextareaField label="Recomendações para Correção" name="recomendacoes" value={item.recomendacoes} onChange={(e) => handleItemChange(index, e)} placeholder="Descrever sugestões de correção..." />
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <InputField label="Prazo de Execução" name="prazo" type="date" value={item.prazo} onChange={(e) => handleItemChange(index, e)} placeholder="" />
                     <InputField label="Responsável" name="responsavel" value={item.responsavel} onChange={(e) => handleItemChange(index, e)} placeholder="Nome do responsável pela correção" />
                   </div>
+
+                  {/* Novo Dropdown de Status */}
+                  <SelectField
+                    label="Status da Ação"
+                    name="status"
+                    value={item.status}
+                    onChange={(e) => handleItemChange(index, e)}
+                    options={[
+                      { label: 'Em Andamento', value: 'em andamento' },
+                      { label: 'Concluída', value: 'concluída' },
+                      { label: 'Atrasada', value: 'atrasada' },
+                    ]}
+                  />
+
                   <TextareaField label="Conclusão da Ação" name="conclusao" value={item.conclusao} onChange={(e) => handleItemChange(index, e)} placeholder="Descrever a conclusão após a correção." />
 
                   {inspectionItems.length > 1 && (
@@ -622,13 +615,12 @@ export default function InspectionForm() {
               <TextareaField label="Parecer Técnico da Inspeção" name="conclusaoGeral" value={conclusionData.conclusaoGeral} onChange={handleConclusionChange} placeholder="Descreva as condições ambientais, de trabalho, e se o local/equipamento está apto." />
 
               <div className="space-y-8 md:space-y-0 md:flex md:gap-8">
-                <SignaturePad title="Assinatura do Responsável pela Inspeção" onClear={() => clearSignature(signature1Ref)} />
-                <SignaturePad title="Assinatura do Responsável da Unidade" onClear={() => clearSignature(signature2Ref)} />
+                <SignaturePad title="Assinatura do Responsável pela Inspeção" onClear={() => clearSignature()} />
+                <SignaturePad title="Assinatura do Responsável da Unidade" onClear={() => clearSignature()} />
               </div>
             </section>
           )}
 
-          {/* Navigation */}
           <div className="mt-10 pt-6 border-t border-gray-700 flex justify-between items-center">
             <button
               type="button"
@@ -666,9 +658,7 @@ export default function InspectionForm() {
               </button>
             )}
           </div>
-
         </form>
-        
       </main>
     </div>
   );
