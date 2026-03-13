@@ -270,7 +270,7 @@ export default function InspectionForm() {
   });
 
   const [participants, setParticipants] = useState<Participant[]>([{ nome: '', funcao: '' }]);
-  
+
   // Atualizado para inicializar status vazio e fotos como array
   const [inspectionItems, setInspectionItems] = useState<InspectionItem[]>([
     { item: 1, fato: '', recomendacoes: '', prazo: '', responsavel: '', status: '', conclusao: '', fotos: [] }
@@ -308,15 +308,15 @@ export default function InspectionForm() {
   const handleItemChange = (index: number, e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     const newItems = [...inspectionItems];
-    
+
     if (name === 'fotos') {
       const input = e.target as HTMLInputElement;
       if (input.files) {
         const newFiles = Array.from(input.files);
         // Adiciona as novas fotos ao array existente
-        newItems[index] = { 
-          ...newItems[index], 
-          fotos: [...newItems[index].fotos, ...newFiles] 
+        newItems[index] = {
+          ...newItems[index],
+          fotos: [...newItems[index].fotos, ...newFiles]
         };
         console.log(`📷 Adicionadas ${newFiles.length} fotos para item ${index + 1}. Total: ${newItems[index].fotos.length}`);
       }
@@ -334,7 +334,7 @@ export default function InspectionForm() {
 
   const addItem = () => {
     setInspectionItems([
-      ...inspectionItems, 
+      ...inspectionItems,
       { item: inspectionItems.length + 1, fato: '', recomendacoes: '', prazo: '', responsavel: '', status: '', conclusao: '', fotos: [] }
     ]);
   };
@@ -348,16 +348,16 @@ export default function InspectionForm() {
     setConclusionData({ ...conclusionData, [e.target.name]: e.target.value });
   };
 
-  const clearSignature = () => {};
+  const clearSignature = () => { };
 
   const isCanvasBlank = (canvas: HTMLCanvasElement): boolean => {
     if (!canvas) return true;
     const ctx = canvas.getContext('2d');
     if (!ctx) return true;
-    
+
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = imageData.data;
-    
+
     for (let i = 0; i < pixels.length; i += 4) {
       if (pixels[i] !== 255 || pixels[i + 1] !== 255 || pixels[i + 2] !== 255 || pixels[i + 3] !== 255) {
         return false;
@@ -369,82 +369,115 @@ export default function InspectionForm() {
   const nextStep = () => setStep(s => Math.min(s + 1, 3));
   const prevStep = () => setStep(s => Math.max(s - 1, 1));
 
+  // Função utilitária para transformar Base64 do Canvas em File binário
+  const dataURLtoFile = (dataurl: string, filename: string) => {
+    const arr = dataurl.split(',');
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) { u8arr[n] = bstr.charCodeAt(n); }
+    return new File([u8arr], filename, { type: mime });
+  };
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    console.log("Iniciando submissão do formulário...");
     e.preventDefault();
     setIsLoading(true);
     setSubmissionStatus(null);
-
-    const canvases = document.querySelectorAll('canvas');
-    const signature1Canvas = canvases[0] as HTMLCanvasElement;
-    const signature2Canvas = canvases[1] as HTMLCanvasElement;
-    
-    const signature1 = signature1Canvas ? signature1Canvas.toDataURL() : '';
-    const signature2 = signature2Canvas ? signature2Canvas.toDataURL() : '';
-
-    const signature1IsBlank = signature1Canvas ? isCanvasBlank(signature1Canvas) : true;
-    const signature2IsBlank = signature2Canvas ? isCanvasBlank(signature2Canvas) : true;
-
-    console.log("📷 Convertendo múltiplos arquivos para base64...");
-    const processedItems = await Promise.all(
-      inspectionItems.map(async (item) => {
-        // Converte o array de fotos em um array de strings em Base64
-        const base64Fotos = await Promise.all(
-          item.fotos.map((file) => {
-            return new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onload = (e) => resolve(e.target?.result as string);
-              reader.readAsDataURL(file);
-            });
-          })
-        );
-
-        return {
-          item: item.item,
-          fato: item.fato,
-          recomendacoes: item.recomendacoes,
-          prazo: item.prazo,
-          responsavel: item.responsavel,
-          status: item.status,
-          conclusao: item.conclusao,
-          fotos: base64Fotos.length > 0 ? base64Fotos : ['Nenhuma']
-        };
-      })
-    );
-
-    const formData = {
-      headerData,
-      participants,
-      inspectionItems: processedItems,
-      conclusionData,
-      signatures: {
-        responsavelInspecao: signature1IsBlank ? 'Não assinado' : signature1,
-        responsavelUnidade: signature2IsBlank ? 'Não assinado' : signature2,
-      }
-    };
-
-    console.log("📤 Dados preparados para envio:", {
-      itemsCount: formData.inspectionItems.length,
-      hasSignature1: formData.signatures.responsavelInspecao !== 'Não assinado',
-      hasSignature2: formData.signatures.responsavelUnidade !== 'Não assinado'
-    });
+    const inspectionId = `INSPEC-${Date.now()}`;
 
     try {
-      const response = await fetch('/api/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+      // 1. Coleta e Preparação de TODOS os arquivos para Upload
+      const filesToUpload: { id: string, file: File, name: string, type: string }[] = [];
+
+      // Coletar Assinaturas
+      const canvases = document.querySelectorAll('canvas');
+      const sig1Canvas = canvases[0] as HTMLCanvasElement;
+      const sig2Canvas = canvases[1] as HTMLCanvasElement;
+
+      const sig1Blank = sig1Canvas ? isCanvasBlank(sig1Canvas) : true;
+      const sig2Blank = sig2Canvas ? isCanvasBlank(sig2Canvas) : true;
+
+      if (!sig1Blank) {
+        filesToUpload.push({ id: 'sig1', file: dataURLtoFile(sig1Canvas.toDataURL(), 'assinatura1.png'), name: 'assinatura_inspecao.png', type: 'image/png' });
+      }
+      if (!sig2Blank) {
+        filesToUpload.push({ id: 'sig2', file: dataURLtoFile(sig2Canvas.toDataURL(), 'assinatura2.png'), name: 'assinatura_unidade.png', type: 'image/png' });
+      }
+
+      // Coletar Fotos
+      inspectionItems.forEach((item, itemIndex) => {
+        if (item.fotos && item.fotos.length > 0) {
+          item.fotos.forEach((foto, fotoIndex) => {
+            filesToUpload.push({ id: `item_${itemIndex}_foto_${fotoIndex}`, file: foto, name: foto.name, type: foto.type });
+          });
+        }
       });
 
-      const result = await response.json();
+      // 2. Pedir URLs Pré-Assinadas (Presigned URLs) para o Backend
+      let presignedUrls: Record<string, { signedUrl: string, publicUrl: string }> = {};
 
-      if (response.ok) {
-        setSubmissionStatus('success');
-      } else {
-        throw new Error(result.message || 'Falha no envio do formulário.');
+      if (filesToUpload.length > 0) {
+        console.log(`Buscando permissão de upload para ${filesToUpload.length} arquivos...`);
+        const presignedRes = await fetch('/api/upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: filesToUpload.map(f => ({ id: f.id, name: f.name, type: f.type })) })
+        });
+
+        if (!presignedRes.ok) throw new Error("Falha ao autorizar uploads com o Google Cloud.");
+        const data = await presignedRes.json();
+        presignedUrls = data.urls;
+
+        // 3. Fazer Upload Direto pro Google Cloud Storage (Ignorando a Vercel)
+        console.log("Iniciando upload direto para o Google Cloud...");
+        await Promise.all(filesToUpload.map(async (f) => {
+          const uploadRes = await fetch(presignedUrls[f.id].signedUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': f.type },
+            body: f.file // Arquivo binário cru, muito mais rápido que base64
+          });
+          if (!uploadRes.ok) throw new Error(`Falha no upload da imagem: ${f.name}`);
+        }));
       }
+
+      // 4. Montar o JSON Final (Leve) com as URLs Públicas para salvar na Planilha
+      const processedItems = inspectionItems.map((item, itemIndex) => {
+        const fotosFinais: string[] = [];
+        if (item.fotos && item.fotos.length > 0) {
+          item.fotos.forEach((_, fotoIndex) => {
+            const fileId = `item_${itemIndex}_foto_${fotoIndex}`;
+            if (presignedUrls[fileId]) fotosFinais.push(presignedUrls[fileId].publicUrl);
+          });
+        }
+        return { ...item, fotos: fotosFinais.length > 0 ? fotosFinais : ['Nenhuma'] };
+      });
+
+      const finalPayload = {
+        inspectionId,
+        headerData,
+        participants,
+        inspectionItems: processedItems,
+        conclusionData,
+        signatures: {
+          responsavelInspecao: !sig1Blank ? presignedUrls['sig1'].publicUrl : 'Não assinado',
+          responsavelUnidade: !sig2Blank ? presignedUrls['sig2'].publicUrl : 'Não assinado',
+        }
+      };
+
+      // 5. Enviar Dados de Texto pro Backend (Planilha + PDF + E-mail)
+      console.log("Submetendo dados textuais...");
+      const submitRes = await fetch('/api/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalPayload),
+      });
+
+      if (!submitRes.ok) throw new Error("Erro ao salvar os dados na planilha.");
+
+      setSubmissionStatus('success');
     } catch (error) {
-      console.error('Erro ao enviar formulário:', error);
+      console.error('Erro na submissão completa:', error);
       setSubmissionStatus('error');
     } finally {
       setIsLoading(false);
@@ -558,7 +591,7 @@ export default function InspectionForm() {
                     </label>
                     {/* Campo de arquivo agora suporta "multiple" */}
                     <input id={`fotos-${index}`} name="fotos" type="file" accept="image/*" multiple onChange={(e) => handleItemChange(index, e)} className="hidden" />
-                    
+
                     {/* Exibe a lista de fotos adicionadas com opção de remover */}
                     {item.fotos.length > 0 && (
                       <div className="mt-3 space-y-2">
@@ -575,7 +608,7 @@ export default function InspectionForm() {
                   </div>
 
                   <TextareaField label="Recomendações para Correção" name="recomendacoes" value={item.recomendacoes} onChange={(e) => handleItemChange(index, e)} placeholder="Descrever sugestões de correção..." />
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <InputField label="Prazo de Execução" name="prazo" type="date" value={item.prazo} onChange={(e) => handleItemChange(index, e)} placeholder="" />
                     <InputField label="Responsável" name="responsavel" value={item.responsavel} onChange={(e) => handleItemChange(index, e)} placeholder="Nome do responsável pela correção" />
@@ -588,13 +621,13 @@ export default function InspectionForm() {
                     value={item.status}
                     onChange={(e) => handleItemChange(index, e)}
                     options={[
-                      { label: 'Em Andamento', value: 'em andamento' },
-                      { label: 'Concluída', value: 'concluída' },
-                      { label: 'Atrasada', value: 'atrasada' },
+                      { label: 'Em Andamento', value: 'Em Andamento' },
+                      { label: 'Concluída', value: 'Concluída' },
+                      { label: 'Atrasada', value: 'Atrasada' },
                     ]}
                   />
 
-                  <TextareaField label="Conclusão da Ação" name="conclusao" value={item.conclusao} onChange={(e) => handleItemChange(index, e)} placeholder="Descrever a conclusão após a correção." />
+                  {/* <TextareaField label="Conclusão da Ação" name="conclusao" value={item.conclusao} onChange={(e) => handleItemChange(index, e)} placeholder="Descrever a conclusão após a correção." /> */}
 
                   {inspectionItems.length > 1 && (
                     <button type="button" onClick={() => removeItem(index)} className="w-full mt-2 flex items-center justify-center gap-2 text-red-500 hover:text-red-400 font-semibold py-2 rounded-lg border-2 border-dashed border-red-800 hover:border-red-500 transition">
