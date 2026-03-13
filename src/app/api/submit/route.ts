@@ -29,8 +29,9 @@ interface InspectionItem {
   recomendacoes: string;
   prazo: string;
   responsavel: string;
+  status: string; // <-- NOVO CAMPO
   conclusao: string;
-  foto?: string; // Esperado como base64 data URL
+  fotos?: string[]; // <-- ALTERADO: Esperado como array de base64 data URLs
 }
 
 interface ConclusionData {
@@ -175,7 +176,7 @@ function generateInspectionPDF(
   data: RequestBody, 
   inspectionId: string, 
   signatureUrls: { signature1: string; signature2: string },
-  evidenceUrls: { [key: number]: string }
+  evidenceUrls: { [key: number]: string[] } // <-- ALTERADO: Agora recebe array de URLs
 ): Buffer {
   const doc = new jsPDF();
   
@@ -265,20 +266,26 @@ function generateInspectionPDF(
       addText(`Item ${item.item}:`, 12, true);
       addText(`Fato Observado: ${item.fato}`, 10);
       
-      // Evidencia fotografica com hyperlink
-      const evidenceUrl = evidenceUrls[index];
-      addText('Evidencia Fotografica:', 10);
-      if (evidenceUrl && evidenceUrl !== 'Nenhuma' && !evidenceUrl.includes('❌')) {
-        addLink('Ver Evidencia', evidenceUrl, 10);
-      } else if (evidenceUrl && evidenceUrl.includes('❌')) {
-        addText(evidenceUrl, 10);
-      } else {
+      // Evidência fotográfica com hyperlink (ALTERADO PARA MÚLTIPLAS)
+      addText('Evidências Fotográficas:', 10);
+      const itemEvidences = evidenceUrls[index] || [];
+      
+      if (itemEvidences.length === 0 || (itemEvidences.length === 1 && itemEvidences[0] === 'Nenhuma')) {
         addText('Nenhuma', 10);
+      } else {
+        itemEvidences.forEach((evidenceUrl, pIndex) => {
+          if (!evidenceUrl.includes('❌')) {
+            addLink(`Ver Evidência ${pIndex + 1}`, evidenceUrl, 10);
+          } else {
+            addText(evidenceUrl, 10);
+          }
+        });
       }
       
       addText(`Recomendações: ${item.recomendacoes}`, 10);
       addText(`Prazo: ${item.prazo}`, 10);
       addText(`Responsável: ${item.responsavel}`, 10);
+      addText(`Status: ${item.status}`, 10); // <-- NOVO CAMPO
       addText(`Conclusão: ${item.conclusao}`, 10);
       yPosition += 5;
     });
@@ -470,7 +477,7 @@ export async function POST(request: NextRequest) {
 
     // Preparar URLs para o PDF (serão preenchidas após o upload das imagens)
     const signatureUrls = { signature1: 'Não assinado', signature2: 'Não assinado' };
-    const evidenceUrls: { [key: number]: string } = {};
+    const evidenceUrls: { [key: number]: string[] } = {}; // <-- ALTERADO: ARRAY DE URLS
 
     // Verificar se as assinaturas estão em branco
     const signature1IsBlank = signatures.responsavelInspecao === 'Não assinado' || isSignatureBlank(signatures.responsavelInspecao);
@@ -509,8 +516,6 @@ export async function POST(request: NextRequest) {
     });
     
     // Lógica para determinar o texto/link das assinaturas
-    // Esta lógica foi movida para fora do loop .map para funcionar corretamente
-    // tanto para casos com itens de inspeção quanto para casos sem itens.
     let signatureLink1 = 'Não assinado';
     if (!signature1IsBlank) {
       if (signature1Result.success && signature1Result.url) {
@@ -539,35 +544,40 @@ export async function POST(request: NextRequest) {
     const rowsToAppend = await Promise.all(
       inspectionItems.map(async (item, index) => {
         console.log(`📸 Processando item ${index + 1}:`, {
-          hasPhoto: !!item.foto,
-          photoType: typeof item.foto
+          hasPhotos: !!item.fotos && item.fotos.length > 0
         });
 
-        let photoResult: UploadResult = { url: '', success: true, error: 'Nenhuma foto fornecida' };
-
-        if (item.foto && item.foto !== 'Nenhuma') {
-          photoResult = await uploadImageToCloudStorage(item.foto, `evidencias/Evidencia_${inspectionId}_Item_${index + 1}.png`);
-        }
-
-        console.log(`📸 Resultado do upload da evidência ${index + 1}:`, {
-          success: photoResult.success,
-          url: photoResult.url || 'Vazio',
-          error: photoResult.error || 'N/A'
-        });
-
-        // Determinar o texto para a coluna de evidência
+        let uploadedUrls: string[] = [];
         let evidenceText = 'Nenhuma';
-        if (item.foto && item.foto !== 'Nenhuma') {
-          if (photoResult.success && photoResult.url) {
-            evidenceText = `=HYPERLINK("${photoResult.url}"; "Ver Evidência")`;
-            evidenceUrls[index] = photoResult.url; // URL para o PDF
+
+        // Lógica para MÚLTIPLAS FOTOS
+        if (item.fotos && item.fotos.length > 0 && item.fotos[0] !== 'Nenhuma') {
+          // Promise.all para subir todas as fotos do item simultaneamente
+          const uploadPromises = item.fotos.map((base64Foto, pIndex) => 
+            uploadImageToCloudStorage(base64Foto, `evidencias/Evidencia_${inspectionId}_Item_${index + 1}_Foto_${pIndex + 1}.png`)
+          );
+          
+          const photoResults = await Promise.all(uploadPromises);
+          
+          uploadedUrls = photoResults.map((res, i) => {
+            console.log(`📸 Resultado do upload da evidência ${index + 1} (Foto ${i + 1}):`, {
+              success: res.success,
+              url: res.url || 'Vazio',
+              error: res.error || 'N/A'
+            });
+            return res.success && res.url ? res.url : `❌ Erro Foto ${i + 1}: ${res.error}`;
+          });
+          
+          // Formatação para o Google Sheets
+          if (uploadedUrls.length === 1 && photoResults[0].success) {
+            evidenceText = `=HYPERLINK("${uploadedUrls[0]}"; "Ver Evidência")`;
           } else {
-            evidenceText = `❌ Falha no upload: ${photoResult.error || 'Erro desconhecido'}`;
-            evidenceUrls[index] = `❌ Falha no upload: ${photoResult.error || 'Erro desconhecido'}`;
+            // Sheets quebra com múltiplos HYPERLINKS. Injetamos as URLs cruas separadas por quebra de linha.
+            evidenceText = uploadedUrls.join('\n');
           }
-        } else {
-          evidenceUrls[index] = 'Nenhuma';
         }
+
+        evidenceUrls[index] = uploadedUrls.length > 0 ? uploadedUrls : ['Nenhuma'];
 
         return [
           inspectionId,
@@ -586,6 +596,7 @@ export async function POST(request: NextRequest) {
           item.recomendacoes || '',
           item.prazo || '',
           item.responsavel || '',
+          item.status || '',
           item.conclusao || '',
           evidenceText,
           conclusionData.conclusaoGeral || '',
@@ -596,13 +607,12 @@ export async function POST(request: NextRequest) {
     );
 
     // Tratamento para formulários sem itens de inspeção
-    // Esta seção agora usa as variáveis de assinatura pré-calculadas corretamente
     if (rowsToAppend.length === 0) {
       rowsToAppend.push([
         inspectionId, headerData.data || '', headerData.hora || '', headerData.departamento || '',
         headerData.encarregado || '', headerData.responsavelQSMS || '', headerData.gerenteContrato || '',
         headerData.unidade || '', headerData.local || '', headerData.emailCompanhia || '', participantNames, participantFunctions,
-        'N/A', 'Nenhum item de inspeção foi adicionado.', '', '', '', 'Nenhuma',
+        'N/A', 'Nenhum item de inspeção foi adicionado.', '', '', 'N/A', '', 'Nenhuma', // Status preenchido com N/A
         conclusionData.conclusaoGeral || '',
         signatureLink1,
         signatureLink2,
@@ -632,7 +642,7 @@ export async function POST(request: NextRequest) {
     console.log("📤 Enviando para Google Sheets...");
     const appendResponse = await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'Mapa de Controle!A:V',
+      range: 'Mapa de Controle!A:W', // <-- RANGE ATUALIZADO PARA INCLUIR STATUS
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: rowsToAppend,
